@@ -104,6 +104,52 @@ dropsInject / isPromptModule` 和 `reason`，门禁失败时会连宿主路径�
 回归：`node scripts/check-upstream-ports.mjs`（13 项，含软链夹具、权限位、#77 两种形状、
 zip 反斜杠目录项、宿主版本门禁；Windows 上跳过 POSIX 专属项）。已并入 `node scripts/run-checks.mjs`。
 
+## 修复 6 — 回灌上游 1.1.84–1.1.88 的宿主正确性修复 + 锚点/子代理接管
+
+上游在 1.1.84→1.1.88 之间又发了一批「宿主被改坏 / 静默假绿」的修复。按「只收宿主正确性」
+原则挑，逐条落到本 fork：
+
+### A 类（宿主正确性）
+
+| 上游 | 内容 | 落点 |
+|---|---|---|
+| 1.1.87 | 0 字节 `.dshpurge.bak` 不再当原版写回；改名 `.bad` 跳过，回滚/卸载时清残骸 | `core.js` `restoreFromBak` / `revertAll` |
+| 1.1.87 | 备份/配置/状态/override 原子写补 fsync（断电不再留 0 字节文件） | `core.js` `atomicWriteSync` |
+| 1.1.87 | `optional` 补丁命中数不符 → 软失败；`applyReplacementsToText` 支持 `expect` 契约 | `core.js` `applyReplacementsToText` / `isPatchResultSoftOk` |
+| 1.1.87 | 插入型替换加 `insertProbe`，重复应用不二次插入 | `core.js`（settings legacy 两条） |
+| 1.1.87 | CLI `--apply` 有失败项退出码 1 | `bin/dsh-purge.js` |
+| 1.1.87 | asar 解包校验输出路径必须在 destDir 内（越界条目跳过告警） | `extract-asar.js` `extractAsar` |
+| 1.1.87 | 红队路径校验对最近存在的祖先做 realpath（堵 symlink 逃逸） | `redteam/validate.js` `realish` |
+| 1.1.87 | 更新检查只允许 https | `update.js` `requestBuffer` |
+| 1.1.87 | 报告回放的头部/Cookie/请求体/模板填充去换行（防头注入） | `redteam/report-replay.js` |
+| 1.1.87 | 子代理名额立即占用（n+1），占不到立即回退 | `redteam/tools.js` `redteam_agent_slot` |
+| 1.1.86/1.1.87 | 换包先杀 Electron main（排除 `--type=`）、等待循环改 CIM 真实路径、挪包失败重拉原版并记日志、没定位到 exe 不杀进程 | `desktop.js` `ASAR_SWAP_PS1` / `scheduleRestart` |
+| 1.1.88 | #36 扩到 bash/pwsh（rc.5 command 级 justification）+ marker 大小写都认 | `core.js` `id: 36` |
+| 1.1.88 | #53 扩到 `harness-dev-context`（rc.3+ checkout 限制句）+ rc.5 注释标记 | `core.js` `id: 53` + `targetFiles."harness-dev-context"` |
+| 1.1.84 | 新增 #89 沙箱策略去品牌、#90 skill-badge 描述去品牌、#91 宿主信号退出日志 | `core.js` + `targetFiles."skill-badge"` |
+
+### B 类（能力，带开关）
+
+- **`lib/anchor.js`（上游 1.1.84）**：system prompt 尾部锚点。`identity.js` 支持 `anchorText`，
+  补到 sections 末尾（同名先滤再追加）；子会话另有一条 context 锚点排在宿主 delegation 之后。
+  开关 `anchorMode: "auto" | "off"`，默认 `auto`。
+- **`lib/subagent-control.js`（上游 1.1.84）**：子代理审批接管。宿主给子会话写死
+  `approval/policy=never`，`dsh-user-approval.decide()` 在 waterfall 之前就 rejected；
+  这里先把 policy 补成 `ask`（最多 4 次，append 失败退还名额），再在 `approval/request` 里对子会话放行一次。
+  只作用于子会话，开关 `subagentControl: false`。
+- **`redteam/tools.js` `loadDefineTool`**：补 `require('@deepseek-ai/dsh-tools')` 快路径、
+  `process.resourcesPath` / `app.asar.unpacked` 等桌面端解析候选。
+
+### 仍未回灌（A2 剩余，需逐条对 rc.5 源码核 pattern）
+
+`#32`（web surface 的 rc.5 变体）、`#50`（跨会话引用话术）、`#57`（rc.5 developer role）、
+`#62`（rc.5 approval fail-open）四条的多版本 pattern。本机 rc.5 上的当前表现：
+`#32 skipped`、`#50/#57/#62 applied`、`#36/#53/#89/#90/#91 pending`（待下次 Apply）。
+这四条补的是「同一个补丁在 rc.2 与 rc.5 上都能命中」，属补丁覆盖面而非新缺陷。
+
+回归：`scripts/check-upstream-ports.mjs` 从 13 项扩到 27 项（新增 0 字节备份、`expect` 契约、
+`insertProbe`、#36/#53/#89/#90/#91 形状、路径逃逸、回放去换行、换包脚本静态契约、
+锚点位置与去重、子代理接管开关与放行、原子写完整性）。
 
 ---
 

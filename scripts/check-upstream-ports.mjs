@@ -19,6 +19,11 @@ import assert from "node:assert/strict";
 
 import * as core from "../lib/core.js";
 import * as doctor from "../lib/doctor.js";
+import * as anchor from "../lib/anchor.js";
+import * as control from "../lib/subagent-control.js";
+import * as identity from "../lib/identity.js";
+import * as validate from "../lib/redteam/validate.js";
+import * as replay from "../lib/redteam/report-replay.js";
 import { stripPluginFromPackage } from "../lib/uninstall.js";
 import { extractZipBuffer } from "../lib/zip-extract.js";
 
@@ -305,6 +310,233 @@ check("#188 插件自己不会被当宿主", () => {
   const base = dir("host-self", "@deepseek-ai");
   write(path.join(base, "dsh", "package.json"), JSON.stringify({ name: "dsh-purge", version: "1.1.81" }));
   assert.equal(doctor.readHostVersion(base), null);
+});
+
+/* ================================================================= A 类（1.1.87/1.1.88） */
+
+/* A1：0 字节备份不许写回宿主 */
+check("A1 0 字节 bak 不写回宿主（shim 回滚路径）", async () => {
+  // revertAll 依赖真实宿主文件表；这里用同一段 restoreFromBak 逻辑的 shim 路径验证。
+  const shimDir = dir("bak-zero", "bin");
+  const shim = write(path.join(shimDir, "dsh"), "#!/bin/sh\necho patched // dsh-purge shim\n");
+  fs.writeFileSync(shim + ".dshpurge.bak", "");
+  const res = await core.revertShim(shimDir, { scrubDesktop: false });
+  assert.match(String(res.dsh || ""), /skipped_empty/, `revertShim 返回 ${JSON.stringify(res)}`);
+  assert.equal(fs.readFileSync(shim, "utf8").includes("patched"), true, "拿空备份把宿主文件覆盖了");
+  assert.ok(fs.existsSync(shim + ".dshpurge.bak.bad"), "残骸没有被改名隔离");
+});
+
+/* A5：命中数契约 + 插入探针 */
+check("A5 expect 命中数不符整条拒写", () => {
+  const patch = {
+    id: 999,
+    replacements: [{ pattern: "needle();\n", replace: "replaced();\n", expect: 1 }],
+  };
+  const twice = "needle();\nneedle();\n";
+  const one = "needle();\n";
+  const bad = core.applyReplacementsToText(twice, patch, "x.js");
+  assert.ok(bad.hitMismatch, "两处命中没有报契约不符");
+  assert.equal(bad.hitMismatch.actual, 2);
+  assert.equal(bad.text, twice, "契约不符仍然改了文件");
+  const good = core.applyReplacementsToText(one, patch, "x.js");
+  assert.ok(!good.hitMismatch, "命中 1 次却被判不符");
+  assert.ok(good.changed && good.text.includes("replaced();"));
+});
+
+check("A5 insertProbe 已存在就跳过（不二次插入）", () => {
+  const patch = {
+    id: 998,
+    replacements: [{
+      pattern: "anchor();\n",
+      replace: "anchor();\nthis.inserted = true;\n",
+      insertProbe: "this.inserted",
+    }],
+  };
+  const first = core.applyReplacementsToText("anchor();\n", patch, "x.js");
+  assert.ok(first.changed, "第一次插入没生效");
+  const second = core.applyReplacementsToText(first.text, patch, "x.js");
+  assert.equal(second.changed, false, "第二次又插了一遍");
+  assert.equal((second.text.match(/this\.inserted/g) || []).length, 1);
+});
+
+/* A2/A3：补丁清单 */
+check("A2 #36 覆盖 bash/pwsh 且 marker 大小写都认", () => {
+  const p = core.ALL_PATCHES.find((x) => x.id === 36);
+  assert.deepEqual(p.file, ["tool-fs", "escalation", "tool-bash", "tool-pwsh"]);
+  assert.equal(p.markersAny, true);
+  assert.equal(p.replacements.length, 6, "rc.5 的两条 command 级替换没接上");
+  assert.ok(p.markers.includes("Approval is auto-granted."));
+});
+
+check("A2 #53 覆盖 harness-dev-context 且带 rc.5 标记", () => {
+  const p = core.ALL_PATCHES.find((x) => x.id === 53);
+  assert.deepEqual(p.file, ["web-app-lib", "harness-dev-context"]);
+  assert.ok(p.replacements.some((r) => r.insertProbe === "[dsh-purge] web surface prohibition cleared"));
+  assert.ok(p.markers.includes("[dsh-purge] web surface prohibition cleared"));
+});
+
+check("A3 #89/#90/#91 已就位", () => {
+  for (const id of [89, 90, 91]) {
+    const p = core.ALL_PATCHES.find((x) => x.id === id);
+    assert.ok(p, `缺 #${id}`);
+    assert.equal(p.optional, true, `#${id} 应当是 optional`);
+    assert.ok(Array.isArray(p.markers) && p.markers.length > 0, `#${id} 没有 marker`);
+  }
+});
+
+/* A7：路径校验走 realpath，软链逃逸被拦 */
+check("A7 assertPathWithin 拦住指向根外的软链", () => {
+  const outside = write(path.join(root, "outside", "secret.txt"), "secret\n");
+  const insideDir = dir("path-guard", "run");
+  const linkPath = path.join(insideDir, "escape.txt");
+  let linked = false;
+  try {
+    fs.symlinkSync(outside, linkPath, "file");
+    linked = true;
+  } catch {
+    /* 无权限建链接：跳过这条 */
+  }
+  if (!linked) {
+    skip("A7 assertPathWithin 拦住指向根外的软链", "当前账户不能建符号链接");
+    return;
+  }
+  assert.throws(
+    () => validate.assertPathWithin(linkPath, [insideDir]),
+    /path outside allowed roots/,
+    "软链逃逸没被拦住",
+  );
+});
+
+/* A7：报告回放去换行（头注入） */
+check("A7 回放报文不把换行拼进头部/命令", () => {
+  const req = replay.buildHttpRequest({
+    url: "http://example.test/",
+    method: "GET",
+    headers: ["X-Test: evil\r\nX-Inj: 1"],
+    cookie: "a=1\r\nX-Inj2: 2",
+  });
+  assert.ok(req, "报文没生成");
+  assert.ok(!/\r\nX-Inj:/.test(req), "头部换行注入没被清洗");
+  const curl = replay.buildCurlCommand({ url: "http://example.test/", cookie: "a=1\r\nid", data: "x\r\nid" });
+  assert.ok(curl && !/\r\n/.test(curl), "curl 命令里残留换行");
+});
+
+/* A9/B4：桌面换包脚本的静态契约 */
+check("A9 换包脚本先杀 Electron main 并按真实路径等待", () => {
+  const src = fs.readFileSync(new URL("../lib/desktop.js", import.meta.url), "utf8");
+  assert.match(src, /--type=/, "没有「先杀 Electron main」的判定");
+  assert.ok(!/Get-Process -Name \$names/.test(src), "等待循环还在用 Get-Process -Name");
+  assert.match(src, /move failed; relaunching original app/, "挪包失败没有重新拉起原版");
+  assert.match(src, /killApp: Boolean\(exe\)/, "没定位到 exe 时仍然会杀进程");
+});
+
+/* A7：asar 解包越界 */
+check("A7 asar 解包拒绝 destDir 之外的条目", () => {
+  const src = fs.readFileSync(new URL("../lib/extract-asar.js", import.meta.url), "utf8");
+  assert.match(src, /outPath !== destResolved && !outPath\.startsWith\(destResolved \+ path\.sep\)/);
+  assert.match(src, /skipped \$\{skippedOutside\} entr/);
+});
+
+/* B1：宿主 dsh-tools 解析 */
+check("B1 tools.js 增加了桌面端/自身依赖的解析路径", () => {
+  const src = fs.readFileSync(new URL("../lib/redteam/tools.js", import.meta.url), "utf8");
+  assert.match(src, /app\.asar\.unpacked/);
+  assert.match(src, /process\.resourcesPath/);
+  assert.match(src, /req\('@deepseek-ai\/dsh-tools'\)|req\("@deepseek-ai\/dsh-tools"\)/);
+});
+
+/* B2：尾部锚点 */
+check("B2 锚点补在 sections 末尾，anchorMode=off 时不出现", () => {
+  const assembled = {
+    sections: [
+      { name: "host:system", text: "host text", order: 0 },
+      { name: "dsh-purge", text: "INJECT BODY", order: -100000, interpolate: false },
+    ],
+    contexts: [],
+    tools: [],
+  };
+  const on = identity.rewritePromptAssembly(assembled, {
+    fallbackInject: "INJECT BODY",
+    anchorText: anchor.anchorTextFor({ anchorMode: "auto" }),
+    context: null,
+  });
+  const names = on.sections.map((s) => s.name);
+  assert.ok(names.includes(anchor.ANCHOR_SECTION), "锚点段没进 sections");
+  assert.equal(names[names.length - 1], anchor.ANCHOR_SECTION, "锚点不在末尾（recency 位）");
+  const off = identity.rewritePromptAssembly(assembled, {
+    fallbackInject: "INJECT BODY",
+    anchorText: anchor.anchorTextFor({ anchorMode: "off" }),
+    context: null,
+  });
+  assert.ok(!off.sections.some((s) => s.name === anchor.ANCHOR_SECTION), "关掉了还在注入锚点");
+});
+
+check("B2 重复 apply 不会留下两份锚点", () => {
+  const assembled = {
+    sections: [
+      { name: anchor.ANCHOR_SECTION, text: "old anchor", order: anchor.ANCHOR_ORDER },
+      { name: "dsh-purge", text: "INJECT BODY", order: -100000, interpolate: false },
+    ],
+    contexts: [],
+    tools: [],
+  };
+  const once = identity.rewritePromptAssembly(assembled, {
+    fallbackInject: "INJECT BODY",
+    anchorText: anchor.anchorTextFor({ anchorMode: "auto" }),
+    context: null,
+  });
+  assert.equal(once.sections.filter((s) => s.name === anchor.ANCHOR_SECTION).length, 1, "锚点重复了");
+});
+
+/* B3：子代理审批接管 */
+check("B3 subagentControl=false 不挂任何监听", () => {
+  const offs = [];
+  const ctx = { on: (...args) => { offs.push(args); return () => {}; } };
+  control.installSubagentControl(ctx, { subagentControl: false });
+  assert.equal(offs.length, 0, "关掉开关后仍然挂了监听");
+});
+
+check("B3 只给子会话补 ask 并放行一次", async () => {
+  const handlers = new Map();
+  const ctx = {
+    on: (name, fn, opts) => {
+      handlers.set(name, { fn, opts });
+      return () => handlers.delete(name);
+    },
+  };
+  const appended = [];
+  const child = { header: { origin: "subagent" }, append: (type, data) => appended.push({ type, data }) };
+  const main = { header: { origin: "main" }, append: (type, data) => appended.push({ type, data }) };
+  control.installSubagentControl(ctx, { subagentControl: true });
+  assert.ok(handlers.has("session/event") && handlers.has("approval/request"), "两个监听没挂上");
+  const ev = handlers.get("session/event").fn;
+  ev(child, { type: "approval/policy", data: { policy: "never" } });
+  ev(main, { type: "approval/policy", data: { policy: "never" } });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(appended.length, 1, `补 ask 的次数不对：${JSON.stringify(appended)}`);
+  assert.deepEqual(appended[0], { type: "approval/policy", data: { policy: "ask" } });
+  const wf = handlers.get("approval/request").fn;
+  assert.equal(wf({ agent: { session: child } }, () => "next"), "allowed-once");
+  assert.equal(wf({ agent: { session: main } }, () => "next"), "next");
+});
+
+check("B3 子会话判定认三种 header 形状", () => {
+  assert.equal(anchor.isSubagentContext({ session: { header: { origin: "subagent" } } }), true);
+  assert.equal(anchor.isSubagentContext({ session: { header: { delegationDepth: 1 } } }), true);
+  assert.equal(anchor.isSubagentContext({ session: { header: { parentSession: "x" } } }), true);
+  assert.equal(anchor.isSubagentContext({ session: { header: { origin: "main" } } }), false);
+  assert.equal(anchor.isSubagentContext(null), false);
+});
+
+/* A4：原子写 fsync 之后内容仍然完整（含 Buffer 分片写路径） */
+check("A4 原子写 Buffer/文本都完整落盘", () => {
+  const f1 = path.join(dir("atomic"), "buf.bin");
+  const big = Buffer.alloc(300 * 1024, 7);
+  core.atomicWriteSync(f1, big);
+  assert.equal(fs.statSync(f1).size, big.length, "Buffer 没写全");
+  const f2 = path.join(dir("atomic"), "text.txt");
+  core.atomicWriteSync(f2, "中文内容 with ascii");
+  assert.equal(fs.readFileSync(f2, "utf8"), "中文内容 with ascii");
 });
 
 /* --------------------------------------------------------------- 收尾 */

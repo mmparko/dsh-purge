@@ -186,6 +186,12 @@ async function main() {
     } else {
       console.log("  ⚠ 未定位 shim 目录，跳过注入");
     }
+    // 上游 1.1.87：有失败项就以 1 退出，脚本/CI 才感觉得到「这次没打全」。
+    const failed = core.summarizeApplyReport(report).failed || [];
+    if (failed.length > 0) {
+      console.log(`  ✗ 完成但仍有 ${failed.length} 个补丁失败 / finished with ${failed.length} failed patch(es)`);
+      process.exit(1);
+    }
     console.log("");
     console.log("全部完成 / All done。重启 dsh 生效 / Restart dsh to take effect.");
   } else if (mode === "--revert") {
