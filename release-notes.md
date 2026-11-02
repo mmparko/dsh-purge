@@ -1,3 +1,68 @@
+# 1.2.0
+
+## 中文
+
+- 版本 **1.2.0**。**版本号正式分家**：从这一版起不再跟随上游 `YuJunZhiXue/dsh-purge` 的 1.1.x 号段，
+  上游只作为「宿主正确性」类修复的来源按需挑选（合并清单见 `FORK-NOTES.md` 修复 5 / 修复 6）。
+- **宿主支持面：0.2.1-rc.5 / rc.3 / rc.2 / rc.1 / 0.2.0-rc.2**。`dshTarget` 改为 **0.2.1-rc.5**
+  （本机实测宿主），`dshTargets` 收录全部五个版本，`--doctor` 的 `host_version` 按这份清单判定。
+
+### 本版回灌的宿主正确性修复（上游 1.1.84–1.1.88）
+
+- **备份完整性**：0 字节 `.dshpurge.bak` 不再被当成原版写回宿主（改名 `.bad` 隔离，回滚/卸载清残骸）；
+  备份/配置/状态/override 的原子写补上 `fsync`，断电不再留下半截或 0 字节文件。
+- **补丁命中契约**：`applyReplacementsToText` 支持 `expect` 命中数契约，不一致整条拒写并记
+  `hit_count_mismatch:#id:实际/声明`；`optional` 补丁记软失败，不再让一次误改拖死整次 Apply。
+  插入型替换加 `insertProbe`，重复 Apply 不会二次插入（settings legacy 两条）。
+- **CLI**：`--apply` 有失败项时退出码 1，脚本/CI 能感知「这次没打全」。
+- **换包（Windows）**：先杀 Electron main（`--type=` 排除）再扫安装目录，避免「host 先死、main 还弹框」；
+  等待循环从 `Get-Process -Name` 改回 CIM 真实路径，中文安装路径不再漏杀；挪包失败重新拉起原版并写
+  `%TEMP%\dsh-purge-desktop.log`；没定位到 exe 时不传 `killApp`。
+- **安全**：asar 解包拒绝 destDir 之外的条目；红队 `assertPathWithin` 对最近存在的祖先做 `realpath`
+  （堵软链逃逸）；更新检查只允许 `https`；报告回放的头部/Cookie/请求体/模板填充统一去换行（防头注入）。
+- **并发**：`redteam_agent_slot` 改为先占位再复核（n+1），超出上限立即回退，避免同一 tick 派出超限。
+- **新增补丁**：#89 沙箱策略去品牌、#90 skill-badge 描述去品牌、#91 宿主信号退出持久化日志。
+- **rc.5 双版本 pattern**：#32（web surface 身份句）、#36（bash/pwsh 的 justification）、
+  #53（`harness-dev-context` 的 checkout 限制句）现在 rc.2 与 rc.5 都能命中。
+  这三条已用本机 rc.5 宿主文件实测：命中后「DeepSeek Harness Web GUI」「Do not start a replacement server」
+  「Use this checkout only…」「Required with sandbox_permissions」全部为 0 处残留。
+
+### 能力层（均带开关）
+
+- **尾部锚点 `lib/anchor.js`**：注入正文在 system prompt 最前、模型最后读到的不是我们。现在在
+  sections 末尾补一段 `[OPERATOR ANCHOR]`，把身份/格式锁放回 recency 位；子会话另有一条
+  `dsh-purge:child-anchor`，排在宿主 delegation 之后。`anchorMode: "auto" | "off"`，默认 `auto`；
+  `anchorApplied` 从写死的 `false` 改为真实判定。
+- **子代理审批接管 `lib/subagent-control.js`**：宿主给子会话写死 `approval/policy = never`，
+  而 `dsh-user-approval.decide()` 在 `approval/request` waterfall 之前就 `rejected` ——
+  子代理的高危动作实际执行不了。现在先把 policy 补成 `ask`（最多 4 次，append 失败退还名额），
+  再在 waterfall 对子会话放行一次；主会话零影响。`subagentControl: false` 可立即回滚。
+- **宿主解析 `redteam/tools.js`**：补 `require('@deepseek-ai/dsh-tools')` 快路径与
+  `process.resourcesPath` / `app.asar.unpacked` 候选，插件装在非常规位置也能解析到宿主。
+
+### 说明
+
+- 未回灌：上游的 `profile-insert` / `allowBuilds` / `postinstall` 那一套（本 fork 不走安装期写 profile），
+  以及 `net-scope` 地域/行业门禁（与红队工具定位冲突）。
+- 回归：`scripts/check-upstream-ports.mjs` 从 13 项扩到 27 项，并入 `node scripts/run-checks.mjs`。
+
+## English
+
+- **1.2.0** — the version line is now independent: this build no longer tracks upstream's 1.1.x numbers
+  and only harvests upstream's host-correctness fixes on demand (see `FORK-NOTES.md`, fixes 5 and 6).
+- Hosts: **0.2.1-rc.5 / rc.3 / rc.2 / rc.1 / 0.2.0-rc.2**; `dshTarget` is now `0.2.1-rc.5` and
+  `--doctor`'s `host_version` check reads the full `dshTargets` list.
+- Host correctness: zero-byte `.dshpurge.bak` is never restored (renamed `.bad`); atomic writes fsync;
+  `expect` hit-count contract and `insertProbe` for insert-type replacements; `--apply` exits 1 on
+  failures; desktop swap kills Electron main first and no longer loses Chinese install paths; asar
+  extraction rejects paths outside the destination; red-team path checks resolve the nearest existing
+  ancestor; updates are https-only; replay payloads are stripped of newlines; agent-slot reservation is
+  immediate (n+1) with rollback; new patches #89/#90/#91; #32/#36/#53 now match rc.2 and rc.5
+  (verified against this machine's rc.5 host files with zero branded strings left).
+- Capabilities (with switches): tail anchor (`anchorMode`), subagent approval takeover
+  (`subagentControl`), and extra `dsh-tools` resolution paths for desktop installs.
+- Regression: `scripts/check-upstream-ports.mjs` grew from 13 to 27 checks.
+
 # 1.1.81
 
 ## 中文

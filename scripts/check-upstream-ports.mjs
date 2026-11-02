@@ -375,6 +375,21 @@ check("A2 #53 覆盖 harness-dev-context 且带 rc.5 标记", () => {
   assert.ok(p.markers.includes("[dsh-purge] web surface prohibition cleared"));
 });
 
+check("A2 #32 覆盖 rc.5 的 prefix / URL 行", () => {
+  const p = core.ALL_PATCHES.find((x) => x.id === 32);
+  assert.deepEqual(p.file, ["web-app-lib", "harness-dev-context"]);
+  const patterns = p.replacements.map((r) => (typeof r.pattern === "string" ? r.pattern : r.pattern.source));
+  assert.ok(patterns.some((s) => s.startsWith('prefix: "You are interacting')), "rc.5 prefix 没接上");
+  assert.ok(patterns.some((s) => s.includes("Current DeepSeek Harness Web GUI URL: ")), "rc.5 URL 行没接上");
+  assert.ok(patterns.some((s) => s.includes("Advertised URL of the DeepSeek Harness Web GUI")), "rc.5 广告 URL 没接上");
+  // rc.5 形状的活体样本：整段清掉，不留品牌词
+  const sample = 'prefix: "You are interacting with the user through the DeepSeek Harness Web GUI at ",\n'
+    + 'text: () => `Current DeepSeek Harness Web GUI URL: ${JSON.stringify(x)}.`\n';
+  const out = core.applyReplacementsToText(sample, p, "dsh-harness-dev-context/lib/index.js");
+  assert.ok(out.changed, "rc.5 样本没命中");
+  assert.equal((out.text.match(/DeepSeek Harness Web GUI/g) || []).length, 0, "仍有品牌词残留");
+});
+
 check("A3 #89/#90/#91 已就位", () => {
   for (const id of [89, 90, 91]) {
     const p = core.ALL_PATCHES.find((x) => x.id === id);

@@ -1,8 +1,10 @@
-# FORK NOTES — 跑在 DSH 0.2.1-rc.3 / 0.2.1-rc.2 / 0.2.1-rc.1 / 0.2.0-rc.2 上的可用副本
+# FORK NOTES — 独立红队构建（dsh 0.2.1-rc.5 / rc.3 / rc.2 / rc.1 / 0.2.0-rc.2）
 
 上游：<https://github.com/YuJunZhiXue/dsh-purge>（Apache-2.0，见 `docs/upstream-dsh-purge-LICENSE`）
-本仓库版本：`dsh-purge 1.1.81`，针对 **DSH 0.2.1-rc.3 / 0.2.1-rc.2 / 0.2.1-rc.1 / 0.2.0-rc.2（desktop / `resources/app`）** 打了五组修复。
-不是上游的发布分支，也不带任何本机数据（`$DSH_HOME/redteam/config.json`、密钥、engagement 记录都不在仓库里）。
+本仓库版本：`dsh-purge 1.2.0`。**1.2.0 起版本号分家**：不再跟随上游的 1.1.x 号段，上游只作为
+「宿主正确性」类修复的来源按需挑选（见下文「回灌」各节），不再是发布基线。
+支持面：**DSH 0.2.1-rc.5 / rc.3 / rc.2 / rc.1 / 0.2.0-rc.2（desktop / `resources/app`）**。
+不带任何本机数据（`$DSH_HOME/redteam/config.json`、密钥、engagement 记录都不在仓库里）。
 
 ## 修复 1 — `#40 COMPLETE_PROMPT_KEEP_INJECT` 命中不到 rc.2 的 complete 收尾块
 
@@ -78,7 +80,7 @@ scripts/test-official-update-rollback.mjs              # 回归测试 2（更新
 dropsInject / isPromptModule` 和 `reason`，门禁失败时会连宿主路径、`#40` 状态一起返回，
 不再只丢一句「没写进全部宿主」。
 
-## 修复 5 — 回灌上游 1.1.78–1.1.83 的可行部分（1.1.81）
+## 修复 5 — 回灌上游 1.1.78–1.1.83 的可行部分（1.1.81 起）
 
 上游从 1.1.75 起陆续修了一批「装完就坏 / 静默失效」的问题，但它是单宿主（0.2.1-rc.2）口径，
 不能整段 cherry-pick。取的是与本 fork 结构对得上、且不会误伤多宿主的那几条：
@@ -104,7 +106,7 @@ dropsInject / isPromptModule` 和 `reason`，门禁失败时会连宿主路径�
 回归：`node scripts/check-upstream-ports.mjs`（13 项，含软链夹具、权限位、#77 两种形状、
 zip 反斜杠目录项、宿主版本门禁；Windows 上跳过 POSIX 专属项）。已并入 `node scripts/run-checks.mjs`。
 
-## 修复 6 — 回灌上游 1.1.84–1.1.88 的宿主正确性修复 + 锚点/子代理接管
+## 修复 6 — 回灌上游 1.1.84–1.1.88 的宿主正确性修复 + 锚点/子代理接管（1.2.0 起）
 
 上游在 1.1.84→1.1.88 之间又发了一批「宿主被改坏 / 静默假绿」的修复。按「只收宿主正确性」
 原则挑，逐条落到本 fork：

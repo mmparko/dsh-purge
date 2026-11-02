@@ -1,6 +1,6 @@
 {
   "name": "dsh-purge",
-  "version": "1.1.81",
+  "version": "1.2.0",
   "description": "DeepSeek Harness 破甲：让所有模型都能破甲，不同模型可换不同提示词；默认提示词面向国模「小码酱」。Jailbreak for every model — swap prompts per model. 求 Star 收藏 ⭐ 如要二开，请查看署名要求部分",
   "type": "module",
   "main": "lib/index.js",
@@ -80,8 +80,8 @@
     },
     "install": {
       "preferred": "tarball",
-      "tarball": "https://github.com/realMisakaMikoto/dsh-purge/archive/refs/tags/v1.1.81.tar.gz",
-      "zip": "https://github.com/realMisakaMikoto/dsh-purge/releases/download/v1.1.81/dsh-purge-1.1.81.zip",
+      "tarball": "https://github.com/realMisakaMikoto/dsh-purge/archive/refs/tags/v1.2.0.tar.gz",
+      "zip": "https://github.com/realMisakaMikoto/dsh-purge/releases/download/v1.2.0/dsh-purge-1.2.0.zip",
       "git": "https://github.com/realMisakaMikoto/dsh-purge.git"
     }
   },
@@ -94,13 +94,14 @@
   "engines": {
     "node": ">=22.13.0"
   },
-  "dshTarget": "0.2.1-rc.3",
+  "dshTarget": "0.2.1-rc.5",
   "dshTargets": [
+    "0.2.1-rc.5",
     "0.2.1-rc.3",
     "0.2.1-rc.2",
     "0.2.1-rc.1",
     "0.2.0-rc.2"
   ],
   "upstream": "https://github.com/YuJunZhiXue/dsh-purge",
-  "fork": "community compatibility build for dsh 0.2.1-rc.3 / 0.2.1-rc.2 / 0.2.1-rc.1 / 0.2.0-rc.2; not the original project"
+  "fork": "independent red-team build forked from YuJunZhiXue/dsh-purge; targets dsh 0.2.1-rc.5 / rc.3 / rc.2 / rc.1 / 0.2.0-rc.2"
 }
