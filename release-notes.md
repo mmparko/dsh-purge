@@ -1,3 +1,36 @@
+# 1.2.1
+
+## 中文
+
+- 版本 **1.2.1**。修 1.2.0 现场那次「**更新失败，已自动恢复旧版**」。
+- **根因**（`operations/52007216…/reapply.log`，1.1.80 → 1.2.0 那次）：
+  ```
+  "error":"Selected host patch application failed","applied":64,"failed":1,
+  failed_items:[{"patch_id":43,"status":"write_error:Error: EPERM: operation not permitted,
+  rename '…\\dsh-web-app\\presets\\minimal.patch.yml.<pid>.<ts>.tmp' -> '…\\minimal.patch.yml'"}]
+  ```
+  宿主刚重启时 `minimal.patch.yml` 被短暂占用，一次 `rename` 的 EPERM 被当成补丁失败，
+  而 #43 是 `strictFiles` → 整次更新判定失败 → 自动回滚到 1.1.80。重试一次即可成功
+  （当天 22:40 的第二次更新就是 `phase=verified`，现已装 1.2.0）。
+- **修法两层**：
+  1. 原子写对 `EPERM / EBUSY / EACCES / ENOTEMPTY / EEXIST` 做**有界退避重试**
+     （同步 5 次 40/80/120/160ms，异步同理）；仍失败才向上抛。三条写路径
+     （`atomicWriteSync` / `atomicWriteFile` / `atomicCopyFile`）都接上。
+  2. reapply 在整批打完后**对失败项再打一轮**（有界一次，间隔 400ms），两轮都不过才认失败。
+- 回归：新增两项（原子写退避重试的活体夹具 + reapply 重试接线），
+  `scripts/check-upstream-ports.mjs` 28 → 30 项。
+
+## English
+
+- **1.2.1** — fixes the `更新失败，已自动恢复旧版` rollback seen on 1.2.0.
+- Root cause (`operations/52007216…/reapply.log`): the 1.1.80 → 1.2.0 boot reapply applied 64
+  patches and lost one to a transient `EPERM` when renaming
+  `dsh-web-app/presets/minimal.patch.yml`; because #43 is a `strictFiles` patch, the whole update
+  was rolled back. A second attempt later that day verified cleanly (1.2.0 is installed now).
+- Fix: bounded backoff retry for `EPERM/EBUSY/EACCES/ENOTEMPTY/EEXIST` in all three atomic writers,
+  plus one extra reapply pass over the failed patch ids (400 ms apart) before declaring failure.
+- Regression: two new checks (live lock fixture + retry wiring); 28 → 30.
+
 # 1.2.0
 
 ## 中文

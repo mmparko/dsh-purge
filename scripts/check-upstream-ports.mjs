@@ -554,6 +554,41 @@ check("A4 原子写 Buffer/文本都完整落盘", () => {
   assert.equal(fs.readFileSync(f2, "utf8"), "中文内容 with ascii");
 });
 
+/* 1.2.0 现场：宿主刚重启时一个文件被短暂占用，rename 撞 EPERM，整次更新被回滚。
+   现在原子写对 EPERM/EBUSY/EACCES 做有界退避重试，reapply 对失败项再打一轮。 */
+check("1.2.1 原子写对瞬时占用做退避重试", async () => {
+  const src = fs.readFileSync(new URL("../lib/core.js", import.meta.url), "utf8");
+  assert.match(src, /function isTransientFsError/, "没有瞬时错误判定");
+  assert.match(src, /function renameRetrySync/, "同步写没有重试");
+  assert.match(src, /async function renameRetry\b/, "异步写没有重试");
+  assert.equal((src.match(/renameRetry\(tmp, /g) || []).length, 2, "atomicWriteFile / atomicCopyFile 没接重试");
+  assert.equal((src.match(/renameRetrySync\(tmp, /g) || []).length, 1, "atomicWriteSync 没接重试");
+
+  // 真机复现：占住目标文件再写，看是否靠重试活下来（占不住就跳过）。
+  const target = path.join(dir("atomic-lock"), "locked.yml");
+  fs.writeFileSync(target, "original\n");
+  let held = null;
+  try {
+    held = fs.openSync(target, "r+");
+  } catch {
+    held = null;
+  }
+  if (held === null) {
+    skip("1.2.1 原子写对瞬时占用做退避重试（活体）", "当前账户无法占住文件");
+    return;
+  }
+  // 200ms 后释放：重试窗口内应当成功
+  setTimeout(() => { try { fs.closeSync(held); } catch { /* ignore */ } }, 120);
+  await core.atomicWriteFile(target, "rewritten\n");
+  assert.equal(fs.readFileSync(target, "utf8"), "rewritten\n", "重试没有写回内容");
+});
+
+check("1.2.1 reapply 对失败项再打一轮", () => {
+  const src = fs.readFileSync(new URL("../lib/reapply.js", import.meta.url), "utf8");
+  assert.match(src, /retried failed patches/, "没有失败项重试");
+  assert.match(src, /const retryPatches = core\.ALL_PATCHES\.filter/, "重试没有按失败 id 过滤");
+});
+
 /* --------------------------------------------------------------- 收尾 */
 
 console.log("");

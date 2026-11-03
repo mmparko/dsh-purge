@@ -1,7 +1,7 @@
 # FORK NOTES — 独立红队构建（dsh 0.2.1-rc.5 / rc.3 / rc.2 / rc.1 / 0.2.0-rc.2）
 
 上游：<https://github.com/YuJunZhiXue/dsh-purge>（Apache-2.0，见 `docs/upstream-dsh-purge-LICENSE`）
-本仓库版本：`dsh-purge 1.2.0`。**1.2.0 起版本号分家**：不再跟随上游的 1.1.x 号段，上游只作为
+本仓库版本：`dsh-purge 1.2.1`。**1.2.0 起版本号分家**：不再跟随上游的 1.1.x 号段，上游只作为
 「宿主正确性」类修复的来源按需挑选（见下文「回灌」各节），不再是发布基线。
 支持面：**DSH 0.2.1-rc.5 / rc.3 / rc.2 / rc.1 / 0.2.0-rc.2（desktop / `resources/app`）**。
 不带任何本机数据（`$DSH_HOME/redteam/config.json`、密钥、engagement 记录都不在仓库里）。
@@ -152,6 +152,31 @@ zip 反斜杠目录项、宿主版本门禁；Windows 上跳过 POSIX 专属项�
 回归：`scripts/check-upstream-ports.mjs` 从 13 项扩到 27 项（新增 0 字节备份、`expect` 契约、
 `insertProbe`、#36/#53/#89/#90/#91 形状、路径逃逸、回放去换行、换包脚本静态契约、
 锚点位置与去重、子代理接管开关与放行、原子写完整性）。
+
+## 修复 7 — 更新期瞬时文件占用不再拖垮整次更新（1.2.1）
+
+**现场**：1.1.80 → 1.2.0 的第一次更新被回滚，`operations/52007216…/reapply.log` 里只有一条失败：
+
+```
+"failed":1, "failed_items":[{"patch_id":43,"name":"WEB_PRESET_IDENTITY_STRIP",
+"status":"write_error:Error: EPERM: operation not permitted,
+rename '…\\dsh-web-app\\presets\\minimal.patch.yml.<pid>.<ts>.tmp' -> '…\\minimal.patch.yml'"}]
+```
+
+宿主刚重启，`minimal.patch.yml` 被短暂占用；`#43` 是 `strictFiles`，于是一次瞬时 EPERM
+被判成补丁失败 → 整次更新回滚。当天稍后再更新就 `verified` 了，说明是**瞬时锁**而非代码缺陷。
+
+**修法**（两层，缺一层都还会复现）：
+
+1. `lib/core.js`：原子写对 `EPERM / EBUSY / EACCES / ENOTEMPTY / EEXIST` 做有界退避重试
+   （同步 40/80/120/160ms，异步同节奏），仍失败才抛。`atomicWriteSync` / `atomicWriteFile` /
+   `atomicCopyFile` 三条路径全部接上。
+2. `lib/reapply.js`：整批打完后对失败项**再打一轮**（有界一次，间隔 400ms），
+   两轮都不过才判失败；日志记 `retried failed patches: <ids> remaining: <n>`。
+
+**回归**：`check-upstream-ports.mjs` 新增两项（原子写退避重试的活体夹具、reapply 重试接线），
+总数 28 → 30。
+
 
 ---
 
