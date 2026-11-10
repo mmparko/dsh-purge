@@ -1,84 +1,10 @@
-# FORK NOTES — 独立红队构建（dsh 0.2.2-rc.1 / 0.2.1-rc.5 / rc.3 / rc.2 / rc.1 / 0.2.0-rc.2）
+# FORK NOTES — 独立红队构建（dsh 0.2.1-rc.5 / rc.3 / rc.2 / rc.1 / 0.2.0-rc.2）
 
 上游：<https://github.com/YuJunZhiXue/dsh-purge>（Apache-2.0，见 `docs/upstream-dsh-purge-LICENSE`）
-本仓库版本：`dsh-purge 1.2.3`。**1.2.0 起版本号分家**：不再跟随上游的 1.1.x 号段，上游只作为
+本仓库版本：`dsh-purge 1.2.2`。**1.2.0 起版本号分家**：不再跟随上游的 1.1.x 号段，上游只作为
 「宿主正确性」类修复的来源按需挑选（见下文「回灌」各节），不再是发布基线。
-支持面：**DSH 0.2.2-rc.1 / 0.2.1-rc.5 / rc.3 / rc.2 / rc.1 / 0.2.0-rc.2（desktop / `resources/app`）**。
+支持面：**DSH 0.2.1-rc.5 / rc.3 / rc.2 / rc.1 / 0.2.0-rc.2（desktop / `resources/app`）**。
 不带任何本机数据（`$DSH_HOME/redteam/config.json`、密钥、engagement 记录都不在仓库里）。
-
-## 适配 0.2.2-rc.1 — 三个包被拆走、五个 pattern 换了形状
-
-0.2.2-rc.1 不是小改：`dsh-agent-instructions` 删掉了 `WORKSPACE_CONTEXT_INTRO` 整组常量，
-PTC 执行器拆成独立包，`serviceAsk` 从 `dsh-tools/lib/index.js` 搬到 `lib/types/pipeline.js`，
-交付物提示词从 `dsh-client-ui-deliverables` 搬到 `dsh-deliverable-file-references`，
-桌面壳 bundle 的 `#region` 顺序也变了。命中矩阵（85 补丁 × 67 键）先跑出 9 条 `PATTERN_MISS`，
-逐条修完归零。
-
-修法（`lib/core.js`）：
-
-- `targetFiles` 扩候选：
-  - `deliverables-prompt` += `dsh-deliverable-file-references/lib/index.js`；
-  - `dsh-tools-types` += `dsh-tools/lib/types/pipeline.js`（排在 `index.js` 前，`serviceAsk` 在这里）；
-  - `dsh-tools-ptc` += `dsh-tool-executor-ptc/lib/index.js` 与 `lib/types/ptc.js`。
-- 新 pattern **追加**而不替换（老宿主继续用老 pattern，避免把 0.2.1-rc.5 的支持面砍掉）：
-  - #12 新句子 `Approval prompts are enabled in this session: …`（单引号 + 双引号两套）；
-  - #14 `displayReason: escalationDisplayReason(mode, justification),` 形状；
-  - #67 守卫块 5 tab 缩进版。
-- 两个 pattern 改成「只锚一行」，因为它们原来锚的内容跟官方构建顺序绑死了：
-  - #74 只锚 `const claimed = this.inbox.claim(target, position.turn);`——0.2.2 在 claim 和
-    `systemPrompt.assemble()` 之间插了 `model.current()` / `tools.resolve()`，锚两行必碎；
-  - #82 只锚 `import { REMOTE_STREAM_MUX_PATH, … }` 一行——原来紧跟其后的
-    `//#region ../../packages/util/home-paths/lib/index.js` 在 0.2.2 已挪到 1700 行开外。
-- 无需改动：#24（0.2.2 官方 preset 已 `fetch: true`，marker 判已完成）、#2 / #3 / #50（marker 本身就是
-  官方原句，0.2.2 原文已是它们想要的措辞，矩阵里显示 `MARKER_COLLISION`，不影响应用）。
-
-验证：`tools/matrix.mjs` 在拆包出的影子宿主上跑 0.2.2-rc.1（`resources/app` 解包态 + `app.asar.unpacked`
-overlay），`PATTERN_MISS 0 / FILE_MISSING 0`，0 条阻塞 `--apply`；每个（补丁 × 文件）检查点都用
-`core.applyReplacementsToText()` 复算，113 点 0 不一致。`scripts/run-checks.mjs` 30 组 +
-`scripts/check-update-transactions.mjs` 48 组全 PASS。
-
-**顺带查出来的一件事**：`.dshpurge.bak` 里存的是**打完补丁的内容**（抽检
-`dsh-agent-instructions/lib/index.js`、`dsh-user-approval/lib/types/index.js`，bak 与现状一致）。
-所以 `--revert` 对这些文件是 no-op，不能当「官方原件」用；升级自愈靠的是重解 asar，不是 bak。
-
-根因是 `refreshStaleBaksForUpgrade()` 用「原文件里有没有 `dsh-purge` 字串」判「是不是我们打的」，
-而 #1 强引导、#4 persona 这类补丁的产物不含该字串 → 同一次会话里第二次 apply 时它会把 bak
-覆盖成已打补丁的内容。已改成看「这条路径上还有没有补丁 pattern 没落地」。修完往返验证：
-`reverted 43 → 53`，`revert 后与打补丁前不同的文件 10 → 0`。
-
-## 适配 0.2.2-rc.1（二）— `MoveFileExW error 32`
-
-官方更新助手链路是 `cmd.exe → wscript.exe → installer.exe`。前两级都没设 CWD，
-于是 wscript 的 CWD 停在安装目录里——**这个"帮忙升级"的进程自己就是那个让安装器
-`MoveFileExW` 报 error 32 的句柄持有者**，杀进程杀不掉它（它不在安装目录里，`occupied()`
-按 EXE 路径筛不到它，也杀不得）。
-
-修法：
-
-- `#45` handoff：`spawn("cmd.exe", [...], { cwd: process.env.TEMP })`；
-- `lib/official-update.wscript`：`sh.CurrentDirectory = fso.GetSpecialFolder(2).Path`
-  放在 `log()` 之后、杀进程之前；脚本必须保持纯 ASCII（`#46` 会逐字符校验，非 ASCII 直接拒绝执行，
-  所以注释也只能写英文）；
-- `lib/desktop.js` 里插件自己的 wscript 拉起同样补 `cwd: os.tmpdir()`。
-
-实测（`%TEMP%\cwd-diag`）：子进程 CWD 在目标目录 → `Rename-Item` 报
-"The process cannot access the file because it is being used by another process."；
-同一子进程 CWD 换到 `%TEMP%` → 同一 rename 成功。这就是 error 32 的最小复现与修复判据。
-
-真机升级脚本 `tools/upgrade-live.ps1`（默认 dry-run）也按这个顺序做，并且**必须分离**：
-杀安装目录进程用的是 `taskkill /F /T`，worker 若是本进程的子进程会连同父树一起被杀 ——
-所以 `-Execute` 用 `Invoke-CimMethod Win32_Process Create`（父进程 = `WmiPrvSE.exe`）派生 worker，
-`schtasks` 兜底。实测：内联跑的 worker 父进程是 `DeepSeek Harness.exe`（会被连带杀掉，判 `detached=False`），
-WMI 派生的 worker 父进程是 `WmiPrvSE.exe`（判 `detached=True`）。
-
-worker 在杀进程之前还会整树快照到 `%LOCALAPPDATA%\dsh-upgrade-backup\`，装坏了
-`-Phase rollback -BackupPath "<快照>"` 用 `robocopy /MIR` 镜像回去。影子树实测：备份 1,512 MB / 19 s，
-篡改 `main.js` 后回滚，sha256 精确还原（`restored=True`）。注意快照里有超 MAX_PATH 的路径，
-`Remove-Item -Recurse` 删不干净，清快照用 `[System.IO.Directory]::Delete("\\?\<path>", $true)`。
-
-装失败还会**自动**回滚：假安装器删掉 `resources\app`（22,110 文件）后 `exit /b 1`，
-worker 判失败 → `/MIR` 镜像快照 → 拉起旧版，结果 `{"ok":true,"rolledBack":true,"exitCode":1}`，
-文件数与原 sha256 全部还原。所以无人值守升级的最坏结果是「回到升级前」，不是「没客户端」。
 
 ## 修复 1 — `#40 COMPLETE_PROMPT_KEEP_INJECT` 命中不到 rc.2 的 complete 收尾块
 
