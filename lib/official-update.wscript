@@ -11,6 +11,12 @@ var wmi = GetObject('winmgmts:\\\\.\\root\\cimv2');
 function z(n) { return (n < 10 ? '0' : '') + n; }
 function stamp() { var d = new Date(); return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + 'T' + z(d.getHours()) + ':' + z(d.getMinutes()) + ':' + z(d.getSeconds()); }
 function log(m) { var f = fso.OpenTextFile(logPath, 8, true); f.WriteLine(stamp() + ' ' + m); f.Close(); }
+// wscript.exe inherits its CWD from the parent. When that CWD is the install dir this very
+// process keeps a handle on the directory, and the installer's MoveFileExW of the whole tree
+// fails with error 32 (killing processes does not release a CWD handle). Move our own CWD to
+// the system temp folder before doing anything else.
+try { sh.CurrentDirectory = fso.GetSpecialFolder(2).Path; } catch (chdirError) { log('chdir-failed ' + chdirError.message); }
+log('cwd ' + sh.CurrentDirectory);
 function samePath(a, b) { return String(a || '').replace(/\//g, '\\').toLowerCase() === String(b || '').replace(/\//g, '\\').toLowerCase(); }
 function underDir(fp, dir) {
   var a = String(fp || '').replace(/\//g, '\\').toLowerCase();
