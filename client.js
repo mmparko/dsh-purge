@@ -176,7 +176,7 @@ window.__ModuleLoader__.load({ id: "dsh-purge", factory: (require) => {
 			"override.title": "提示词",
 			"metric.purged": "已写入",
 			"metric.activationPending": "等待完整重启后生效",
-			"activation.pending": "补丁已写入解包目录，但当前 DSH 仍在使用原始归档。请完成应用并完整重启，之后才会生效。",
+			"activation.pending": "补丁已写入解包目录，但当前 DSH 仍从 app.asar 启动。普通退出重开不会换走归档：点本页「重启」完成换包后才会生效。",
 			"metric.lost": "补丁未生效，请重新应用",
 			"metric.purged.skip": "已写入。跳过 {n} 项，本机没有这些文件",
 			"metric.pendingShort": "待处理 {n}",
@@ -243,7 +243,7 @@ window.__ModuleLoader__.load({ id: "dsh-purge", factory: (require) => {
 			"update.restarting": "已还原并写入新补丁，正在重启…",
 			"update.fullQuit": "补丁已写入。点「重启」后客户端会自己重新打开。",
 			"restart.official.title": "需要重启",
-			"restart.official.body": "补丁已写入。点重启后客户端会自己重新打开。",
+			"restart.official.body": "补丁已写入。点「重启」会先结束客户端、把 app.asar 挪走再自己打开；普通退出重开不会换走归档。",
 			"update.switched": "已切换到 {version}",
 			"update.autoDone": "已自动更新到 {version}",
 			"update.reloading": "正在刷新设置页…",
@@ -517,7 +517,7 @@ window.__ModuleLoader__.load({ id: "dsh-purge", factory: (require) => {
 			"override.title": "Prompt",
 			"metric.purged": "Written",
 			"metric.activationPending": "Full restart required to activate",
-			"activation.pending": "Patches are written to the extracted directory, but DSH still uses the original archive. Finish Apply and fully restart DSH to activate them.",
+			"activation.pending": "Patches are written to the extracted directory, but DSH still starts from app.asar. A plain quit-and-reopen does not move the archive: use Restart here to finish the swap.",
 			"metric.lost": "Patches are inactive; apply them again",
 			"metric.purged.skip": "Written. Skipped {n}; those files are not on this install",
 			"metric.pendingShort": "Pending {n}",
@@ -584,7 +584,7 @@ window.__ModuleLoader__.load({ id: "dsh-purge", factory: (require) => {
 			"update.restarting": "Restored the old patches, wrote the new ones, and restarting…",
 			"update.fullQuit": "Patches are written. Click Restart and the client opens again by itself.",
 			"restart.official.title": "Restart required",
-			"restart.official.body": "Patches are written. Click Restart and the client opens again by itself.",
+			"restart.official.body": "Patches are written. Restart ends this client, moves app.asar aside, then reopens it; a plain quit-and-reopen does not move the archive.",
 			"update.switched": "Switched to {version}.",
 			"update.autoDone": "Auto-updated to {version}.",
 			"update.reloading": "Refreshing settings…",
@@ -1850,7 +1850,7 @@ max-width:none!important;
 			const located = !!(s && s.ai_base);
 			const hostSurface = hostSurfaceOf(s);
 			const desktopLikely = hostSurface === "desktop" || clientGuessSurface() === "desktop";
-			const sealedReady = !located && desktopLikely && !!(s && (s.asar_still_sealed || s.desktop_exe || s.desktop_install));
+			const sealedReady = !located && desktopLikely && !!(s && (s.sealed_install || s.asar_still_sealed || s.desktop_exe || s.desktop_install));
 			const patchesLost = !!(s && s.patches_lost);
 			const activationPending = !!(s && (s.activation_pending || (located && s.asar_still_sealed)));
 			const operation = s && s.operation;
@@ -1858,7 +1858,10 @@ max-width:none!important;
 			const tally = located ? tallyPatches(patchRowsOf(s)) : { applied: 0, pending: 0, unmatched: 0, skipped: 0, total: 0 };
 			const total = tally.total;
 			const applied = tally.applied;
-			const pct = located && total ? Math.round((applied / total) * 100) : 0;
+			// 分母去掉「本机没有这些文件 / 明确跳过」的行：否则健康机器永远显示 67/69，
+			// 看着像没打全（#8）。真正有问题的是 pending / unmatched，它们仍在分子外并单独提示。
+			const actionable = Math.max(total - tally.skipped, 0) || total;
+			const pct = located && actionable ? Math.round((applied / actionable) * 100) : 0;
 			const metricNotes = [];
 			if (tally.pending) metricNotes.push(t("metric.pendingShort", { n: tally.pending }));
 			if (tally.unmatched) metricNotes.push(t("metric.unmatchedShort", { n: tally.unmatched }));
@@ -1946,7 +1949,7 @@ max-width:none!important;
 				),
 				s ? h("div", { className: "dshp-metrics" },
 					h("div", { className: "dshp-metric" },
-						h("b", null, located ? (applied + " / " + total) : (patchesLost ? t("metric.lost.count") : (sealedReady ? t("metric.sealed.count") : t("metric.unlocated.count")))),
+						h("b", null, located ? (applied + " / " + actionable) : (patchesLost ? t("metric.lost.count") : (sealedReady ? t("metric.sealed.count") : t("metric.unlocated.count")))),
 						h("span", null, activationPending ? t("metric.activationPending") : patchesLost ? t("metric.lost") : !located ? (sealedReady ? t("metric.sealed") : t("metric.unlocated")) : (metricNotes.length ? metricNotes.join(" · ") : t("metric.purged"))),
 					),
 					h("div", { className: "dshp-metric" },
@@ -1996,7 +1999,7 @@ max-width:none!important;
 					),
 				) : null,
 				h("p", { className: "dshp-hint", style: { margin: "8px 0 0", color: "var(--dshp-mute)", fontSize: 12 } }, t("apply.hint")),
-				s && !s.ai_base ? h("p", { className: "dshp-hint", style: { margin: "8px 0 0", color: "var(--dshp-danger, #c44)", fontSize: 12 } }, hostText(t, "warn.noRoot", hostSurface)) : null,
+				s && !s.ai_base && !sealedReady ? h("p", { className: "dshp-hint", style: { margin: "8px 0 0", color: "var(--dshp-danger, #c44)", fontSize: 12 } }, hostText(t, "warn.noRoot", hostSurface)) : null,
 				s && s.ai_base && s.override_status === "missing" ? h("p", { className: "dshp-hint", style: { margin: "8px 0 0", color: "var(--dshp-mute)", fontSize: 12 } }, t("warn.noInject")) : null,
 				askRestart ? h(RestartAsk, {
 					t: t,
@@ -2004,6 +2007,9 @@ max-width:none!important;
 					onLater: () => {
 						suppressRestartAsk.current = true;
 						setAskRestart(false);
+						// 落盘：重开设置页 / 刷新后不再重复弹（#8）。
+						fetch("/dsh-purge/restart-dismiss", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
+							.catch(() => {});
 					},
 					onRestart: () => {
 						suppressRestartAsk.current = true;
@@ -2713,6 +2719,39 @@ max-width:none!important;
 
 		let restartOnce = false;
 
+		/**
+		 * 作业已在跑（already）：按 phase 轮询到终态，别把 already 当成「重启已完成」。
+		 * 旧逻辑直接 return，作业如果早死了界面会永远显示“正在重启”。（#8）
+		 */
+		function watchOperation(setNotice, setBusy, t) {
+			const started = Date.now();
+			const tick = () => {
+				if (Date.now() - started > 90000) {
+					setNotice({ kind: "error", text: t("restart.timeout") });
+					setBusy(false);
+					return;
+				}
+				fetch("/dsh-purge/status", { headers: { accept: "application/json" } })
+					.then((r) => r.json())
+					.then((d) => {
+						const op = (d && d.operation) || null;
+						if (op && op.phase === "verified") {
+							setNotice({ kind: "ok", text: t("operation.verified") });
+							setBusy(false);
+							return;
+						}
+						if (op && (op.phase === "failed" || op.phase === "rolled_back")) {
+							setNotice({ kind: "error", text: t("restart.fail", { error: op.error || op.phase }) });
+							setBusy(false);
+							return;
+						}
+						setTimeout(tick, 2000);
+					})
+					.catch(() => setTimeout(tick, 2000));
+			};
+			setTimeout(tick, 1500);
+		}
+
 		function restartDsh(setNotice, setBusy, t, surface) {
 			if (restartOnce) return;
 			const surf = surface || clientGuessSurface() || "desktop";
@@ -2737,7 +2776,9 @@ max-width:none!important;
 					const next = (d && d.surface) || surf;
 					const full = next === "desktop" || (d && d.fullApp) || desktop;
 					if (full && d.already) {
+						clearTimeout(watch);
 						setNotice({ kind: "ok", text: hostText(t, "restarting", next) });
+						watchOperation(setNotice, setBusy, t);
 						return;
 					}
 					if (full && d.restarting === false) {

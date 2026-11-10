@@ -1,7 +1,7 @@
 # FORK NOTES — 独立红队构建（dsh 0.2.1-rc.5 / rc.3 / rc.2 / rc.1 / 0.2.0-rc.2）
 
 上游：<https://github.com/YuJunZhiXue/dsh-purge>（Apache-2.0，见 `docs/upstream-dsh-purge-LICENSE`）
-本仓库版本：`dsh-purge 1.2.1`。**1.2.0 起版本号分家**：不再跟随上游的 1.1.x 号段，上游只作为
+本仓库版本：`dsh-purge 1.2.2`。**1.2.0 起版本号分家**：不再跟随上游的 1.1.x 号段，上游只作为
 「宿主正确性」类修复的来源按需挑选（见下文「回灌」各节），不再是发布基线。
 支持面：**DSH 0.2.1-rc.5 / rc.3 / rc.2 / rc.1 / 0.2.0-rc.2（desktop / `resources/app`）**。
 不带任何本机数据（`$DSH_HOME/redteam/config.json`、密钥、engagement 记录都不在仓库里）。
@@ -246,3 +246,31 @@ The original multi-host status and doctor implementation was contributed by [@He
 Maintainer follow-up connects doctor to the CLI, validates health/exit codes and baseline writes, propagates the selected surface through all status checks, respects explicit selection, identifies only running installations, and handles copied/missing installations and relative symlinks. The 1.1.74 activation verification and prior runtime fixes remain in place.
 
 Regression: `node scripts/check-status-doctor.mjs` (temporary host and CLI fixtures); the Release checks run it alongside the desktop activation regression.
+
+## Restart/activation loop and stale operations (1.2.2)
+
+Fixes [issue #8](https://github.com/realMisakaMikoto/dsh-purge/issues/8). Three defects stacked into
+"Apply → restart → the panel still demands a restart":
+
+- The asar swap was verified through `bootMatches()`, which required `patches_active === true`. That flag was an
+  all-or-nothing `patches_ready === patches_total`, so one `strictFiles` patch whose anchor is absent on the new
+  host (`unmatched`, e.g. #43 / #70 / #71) made every swap unverifiable; after 120 s the recovery path restored
+  `app.asar` and the host was sealed again. Activation now means "written + unsealed + nothing pending",
+  `unmatched` rides along as `patches_unmatched`, recovery keeps the moved archive once the new host reported a
+  boot, and the desktop activation wait is 180 s.
+- `boot_full_quit` was derived from "`app.asar` still exists", and a plain quit-and-reopen never moves the
+  archive, so the modal returned on every status poll (mount + 5 s timer) and only stayed suppressed until the
+  settings pane unmounted. "Later" is now persisted to `$DSH_HOME/dsh-purge/restart-dismissed.json`, keyed by
+  plugin version + archive size/mtime, and cleared by a new Apply or a new archive.
+- A killed worker left a non-terminal journal, which made `/dsh-purge/restart` answer `already: true` and
+  `createTransaction()` throw `An unfinished operation requires recovery`. `reconcileStale()` reclaims operations
+  whose owner and supervisor are both dead (mark `failed`, release locks), and the client polls `phase` instead of
+  trusting `already`.
+
+The panel denominator no longer counts `skipped` rows (67/69 → 67/67 with "skipped 2"), and a sealed-only first
+install reports `sealed_install`, so the pane says "official client found, Apply to unpack" instead of the red
+"host not located yet".
+
+Regression: `node scripts/check-desktop-activation.mjs` (6 groups: activation gate, boot proof, dismissal
+expiry, stale-operation reconciliation) plus the updated boot-proof case in
+`node scripts/check-update-transactions.mjs`.

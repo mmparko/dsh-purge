@@ -1,3 +1,72 @@
+# 1.2.2
+
+## 中文
+
+- 版本 **1.2.2**。修 [#8](https://github.com/realMisakaMikoto/dsh-purge/issues/8)：DSH 0.2.1-rc.5 桌面端
+  「应用后重启，仍然反复提示需要重启」，取消重启后计数停在 67/69。
+- **根因一（换个包被打回，形成死循环）**：换包（`app.asar` → `app.asar.dshpurge-<id>`）只发生在插件自己的
+  重启事务里，而该事务的激活验收 `bootMatches()` 要求 `patches_active === true`；`patches_active` 又是全等
+  判定（`patches_ready === patches_total`）。只要有一项 `strictFiles` 补丁在新版宿主原文里对不上
+  （`unmatched`，例如 #43 / #70 / #71 的锚点漂移），换包就永远验不过 → 120 s 超时 → 恢复流程
+  `restoreAsar()` 把归档挪回去 → 面板再次要求重启。表现就是「怎么重启都没用」。
+- **修法一**：
+  - `patchActivationStatus()` 的激活条件改为「已写入 + 非密封 + 无 `pending`」，`unmatched` 只作为
+    `patches_unmatched` 告警上报，不再挡住整台宿主；
+  - `bootMatches()` 去掉 `patches_active === true`，改校验 `activation_pending === false` +
+    `patches_pending === 0`（即「宿主不再从密封归档启动」且「没有还等着打的补丁」）；
+  - 恢复流程里若新宿主已经写过 boot report（说明 `resources/app` 这一份能跑），不再 `restoreAsar()`
+    把换包撤回；
+  - 桌面冷启动验收 120 s → 180 s。
+- **根因二（反复弹窗）**：`boot_full_quit` 由「`resources/app.asar` 文件是否还在」推导，而普通
+  「退出客户端再打开」不会挪走归档，于是这个状态按定义永远为真；面板每次轮询 status（挂载 + 5 s 定时）
+  都会重新弹「需要重启」，组件内的 `suppressRestartAsk` 一关设置页就失效。
+- **修法二**：「稍后再说」落盘到 `$DSH_HOME/dsh-purge/restart-dismissed.json`（按插件版本 + 归档
+  size/mtime 失效），`boot_full_quit` 不再无限重复；重新点「应用」或官方换包后自动失效。弹窗与常驻提示
+  都改成事实描述：普通退出重开不会换包，必须点本页「重启」。
+- **根因三（按钮假成功）**：worker / supervisor 被杀会留下 `preparing / stopping / waiting_boot` 这类
+  非终态作业，之后 `/dsh-purge/restart` 直接回 `already:true`，`createTransaction()` 抛
+  `An unfinished operation requires recovery`，界面永久停在「正在重启」。
+- **修法三**：新增 `reconcileStale()`，在 `/restart` 和 apply 入口回收「owner / supervisor 都已死」的
+  作业（判 `failed` + 放锁），`awaiting_restart` 仍交给 `beginRestart` 续跑；客户端对 `already` 不再
+  静默成功，按 `phase` 轮询到终态，失败 / 超时明确报错。
+- **计数可读性**：面板分母不再包含「本机没有这些文件」的 `skipped`，健康机器显示 **67 / 67**
+  （并注明「跳过 2」）；`pending` / `unmatched` 仍在分子外单独提示。
+- **首装文案**：只有 `app.asar`、还没解包时 status 新增 `sealed_install`，面板显示
+  「已找到官方客户端，点应用解开」，不再红字「还没定位到本机 Harness」。
+- 回归：`scripts/check-desktop-activation.mjs` 6 组（新增激活门槛 / `bootMatches` / 落盘标记过期 /
+  陈旧作业回收），`scripts/check-update-transactions.mjs` 20 组（boot proof 用例按新语义更新）。
+
+## English
+
+- **1.2.2** — fixes [#8](https://github.com/realMisakaMikoto/dsh-purge/issues/8): on a DSH 0.2.1-rc.5
+  desktop the panel kept demanding a restart after Apply, and the counter sat at 67/69.
+- Root cause 1 (swap rolled back): the `app.asar` rename only happens inside the plugin's own restart
+  transaction, whose activation gate `bootMatches()` required `patches_active === true` — an all-or-nothing
+  `patches_ready === patches_total`. A single `strictFiles` patch whose anchor is absent on the new host
+  (`unmatched`, e.g. #43 / #70 / #71) made the swap unverifiable, so the 120 s wait failed, the recovery
+  path ran `restoreAsar()`, and the panel asked for a restart again.
+- Fix 1: activation now means "written + unsealed + nothing pending"; `unmatched` is reported as
+  `patches_unmatched` instead of blocking the host. `bootMatches()` checks `activation_pending === false`
+  and `patches_pending === 0`. Recovery keeps the moved archive when the new host already reported a boot.
+  Desktop activation wait 120 s → 180 s.
+- Root cause 2 (endless prompt): `boot_full_quit` was derived from "does `resources/app.asar` still exist",
+  and a plain quit-and-reopen never moves the archive, so the flag stayed true by construction; every status
+  poll re-opened the modal, and the in-component suppression died with the settings pane.
+- Fix 2: "later" is persisted to `$DSH_HOME/dsh-purge/restart-dismissed.json` (keyed by plugin version +
+  archive size/mtime, cleared on a new Apply or a new archive), and both the modal and the banner now say
+  that a plain restart cannot move the archive.
+- Root cause 3 (fake success): a killed worker left non-terminal phases, `/dsh-purge/restart` answered
+  `already: true`, and `createTransaction()` threw `An unfinished operation requires recovery`.
+- Fix 3: `reconcileStale()` reclaims operations whose owner and supervisor are both dead (mark `failed`,
+  release locks) from `/restart` and the apply entry; the client polls `phase` on `already` and reports
+  failure/timeout instead of pretending to restart.
+- The metric denominator no longer counts `skipped` rows, so a healthy host reads **67 / 67** (with
+  "skipped 2" alongside); `pending` / `unmatched` still surface separately.
+- First install with only `app.asar` now reports `sealed_install` and shows "official client found, Apply
+  to unpack" instead of the red "host not located yet".
+- Regression: 6 groups in `scripts/check-desktop-activation.mjs`, 20 groups in
+  `scripts/check-update-transactions.mjs`.
+
 # 1.2.1
 
 ## 中文

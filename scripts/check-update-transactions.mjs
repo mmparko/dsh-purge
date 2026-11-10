@@ -146,13 +146,15 @@ try {
     const report = { nonce: fx.tx.nonce, pid: 424242, started_at: Date.now() + 1, version: fx.tx.target.version, sha: fx.tx.target.sha,
       profile: fx.tx.profile, surface: fx.tx.surface, ai_base: fx.tx.ai_base, patches_active: true, activation_pending: false, patches_pending: 0 };
     assert.equal(bootMatches(fx.tx, report), true);
+    // #8: 未命中补丁会把 patches_active 拉成 false，但它不能再挡住换包验收，否则宿主反复要重启。
+    assert.equal(bootMatches(fx.tx, { ...report, patches_active: false }), true);
     for (const change of [{ pid: fx.tx.old_pid }, { nonce: "wrong" }, { version: "old" }, { sha: "old" }, { profile: "desktop" },
-      { surface: "desktop" }, { ai_base: fx.home }, { patches_active: false }, { activation_pending: true }, { patches_pending: 1 }, { started_at: 0 }]) {
+      { surface: "desktop" }, { ai_base: fx.home }, { activation_pending: true }, { patches_pending: 1 }, { started_at: 0 }]) {
       assert.equal(bootMatches(fx.tx, { ...report, ...change }), false);
     }
     assert.throws(() => journal.createTransaction(fx.home), /active/);
     journal.phase(fx.tx, "failed"); journal.releaseLocks(fx.tx);
-    pass("boot proof rejects old processes, wrong identity/profile/host, inactive patches, and overlapping operations");
+    pass("boot proof rejects old processes, wrong identity/profile/host, stale activation, and overlapping operations");
   }
   {
     const fx = fixture("links");
