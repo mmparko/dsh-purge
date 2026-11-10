@@ -300,7 +300,9 @@
 
     - id: tool-subagent-list-agents
       name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
-      disabled: false
+      # 0.2.2 起这个子路径已并入主包（主插件自己注册 list_agents），这里默认关；
+      # 能解析到的宿主（0.2.1）由 lib/redteam/index.js 的探测改回 disabled: false。
+      disabled: true
 
     - id: tool-subagent
       name: '@deepseek-ai/dsh-tool-subagent'
