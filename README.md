@@ -7,7 +7,7 @@
 <p align="center"><strong>Version 1.2.3</strong></p>
 
 <p align="center">
-  <em>DeepSeek Harness jailbreak: every model, swap prompts per model. Default prompt for 小码酱. Please star ⭐ If you build on this, see Attribution required.</em>
+  <em>DeepSeek Harness jailbreak: every model, swap prompts per model. Default prompt for Xiaomajiang (Cordis). Please star ⭐ If you build on this, see Attribution required.</em>
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> | <a href="README.zh-CN.md">中文</a>
+  <a href="README.md">English</a> | <a href="README.zh-CN.md">Chinese (README.zh-CN.md)</a>
 </p>
 
 > **This is not the upstream project.** `realMisakaMikoto/dsh-purge` is a **community compatibility build** of [`YuJunZhiXue/dsh-purge`](https://github.com/YuJunZhiXue/dsh-purge) (MIT), kept working on **dsh 0.2.2-rc.1 / 0.2.1-rc.5 / 0.2.1-rc.3 / 0.2.1-rc.2 / 0.2.1-rc.1 / 0.2.0-rc.2**. The original author's repository is upstream and owns the design, prompts, and skills; this fork carries only the 0.2.x compatibility patches (diff: [`FORK-NOTES.md`](FORK-NOTES.md)). Report 0.2.x breakage here; feature requests, upstream bugs, and the 0.1.x release tags stay with the original repo.
@@ -102,21 +102,21 @@ Using them without attribution, hiding the source, or passing them off as your o
 
 ## Unauthorized commercial use
 
-Douyin live account **「老张的ai」** (room name **「老张AI讲堂」**) is selling this repository: taking fees in the live room, no attribution, and ignoring the non-profit rule above. The author was in the room. They still charged.
+Douyin live account **"Lao Zhang's AI"** (room name **"Lao Zhang AI Classroom"**) is selling this repository: taking fees in the live room, no attribution, and ignoring the non-profit rule above. The author was in the room. They still charged.
 
 This project is free and non-profit. Selling courses, the plugin, tokens, or reselling it voids the license on the spot. The author reserves the right to pursue it.
 
 Recorded 2026-10-12:
 
 <p align="center">
-  <img src="docs/notice/laozhang-live-1.jpg" width="360" alt="老张的ai live asking for a fee">
-  <img src="docs/notice/laozhang-live-2.jpg" width="360" alt="老张的ai live charging money">
+  <img src="docs/notice/laozhang-live-1.jpg" width="360" alt="Lao Zhang AI live asking for a fee">
+  <img src="docs/notice/laozhang-live-2.jpg" width="360" alt="Lao Zhang AI live charging money">
 </p>
 
-WeChat name **「老张的ai科技」**, same handle as the live-room viewer board. Asked if they were this repo's developer, they said they were. The author said they would report it.
+WeChat name **"Lao Zhang AI Tech"**, same handle as the live-room viewer board. Asked if they were this repo's developer, they said they were. The author said they would report it.
 
 <p align="center">
-  <img src="docs/notice/laozhang-wechat-1.jpg" width="420" alt="老张的ai科技 WeChat claiming to be the developer">
+  <img src="docs/notice/laozhang-wechat-1.jpg" width="420" alt="Lao Zhang AI Tech WeChat claiming to be the developer">
 </p>
 
 ---

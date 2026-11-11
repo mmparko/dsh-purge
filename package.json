@@ -1,7 +1,7 @@
 {
   "name": "dsh-purge",
   "version": "1.2.3",
-  "description": "DeepSeek Harness 破甲：让所有模型都能破甲，不同模型可换不同提示词；默认提示词面向国模「小码酱」。Jailbreak for every model — swap prompts per model. 求 Star 收藏 ⭐ 如要二开，请查看署名要求部分",
+  "description": "DeepSeek Harness Purge: Cybersecurity red-team evaluation plugin and instruction authority purge for DeepSeek Harness. Jailbreak for every model — swap prompts per model.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -44,8 +44,8 @@
     "dsh",
     "dsh-plugin",
     "dsh-plugins",
-    "网络安全",
-    "红队评测",
+    "cybersecurity",
+    "red-team-eval",
     "llm-security",
     "harness-security",
     "deepseek-harness",
@@ -57,11 +57,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/realMisakaMikoto/dsh-purge.git"
+    "url": "git+https://github.com/chmakorkrich/dsh-purge.git"
   },
-  "homepage": "https://github.com/realMisakaMikoto/dsh-purge#readme",
+  "homepage": "https://github.com/chmakorkrich/dsh-purge#readme",
   "bugs": {
-    "url": "https://github.com/realMisakaMikoto/dsh-purge/issues"
+    "url": "https://github.com/chmakorkrich/dsh-purge/issues"
   },
   "dsh": {
     "bundle": {
@@ -80,9 +80,9 @@
     },
     "install": {
       "preferred": "tarball",
-      "tarball": "https://github.com/realMisakaMikoto/dsh-purge/archive/refs/tags/v1.2.3.tar.gz",
-      "zip": "https://github.com/realMisakaMikoto/dsh-purge/releases/download/v1.2.3/dsh-purge-1.2.3.zip",
-      "git": "https://github.com/realMisakaMikoto/dsh-purge.git"
+      "tarball": "https://github.com/chmakorkrich/dsh-purge/archive/refs/tags/v1.2.3.tar.gz",
+      "zip": "https://github.com/chmakorkrich/dsh-purge/releases/download/v1.2.3/dsh-purge-1.2.3.zip",
+      "git": "https://github.com/chmakorkrich/dsh-purge.git"
     }
   },
   "publishConfig": {

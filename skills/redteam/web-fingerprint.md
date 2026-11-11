@@ -1,17 +1,17 @@
 ---
 name: web-fingerprint
-description: Web 服务指纹识别：框架、中间件、CMS、组件版本
-whenToUse: 已发现 HTTP/HTTPS 服务，需要识别技术栈时
+description: Web service fingerprinting: Frameworks, middleware, CMS, component versions
+whenToUse: After discovering HTTP/HTTPS services, when identifying the technology stack
 role: recon
 enabled: true
 ---
 
-## 方法
-1. 响应头：`Server`、`X-Powered-By`、`Set-Cookie` 特征。
-2. 页面特征：favicon 哈希、静态资源路径、报错页、robots.txt。
-3. 主动探测：nuclei 技术识别模板 `nuclei -u <url> -tags tech`；HTTP 存活与技术栈汇总用 `~/.local/bin/pd-httpx -l urls.txt -tech-detect -title -status-code -web-server`（**ProjectDiscovery 版必须用 pd-httpx，`/usr/bin/httpx` 是 Python 库的 CLI**）。
-4. 大网段批量指纹用技能 `gogo-intranet`（`gogo -i <cidr> -p top2 -v --af`，主动指纹要加 `-v`）。
-5. 版本比对：从指纹推断产品与版本，为漏洞检测做准备。
+## Methodology
+1. Response headers: Features from `Server`, `X-Powered-By`, `Set-Cookie`.
+2. Page signatures: Favicon hash, static asset paths, error pages, robots.txt.
+3. Active probing: Nuclei tech detection templates `nuclei -u <url> -tags tech`; HTTP liveness and technology stack aggregation via `~/.local/bin/pd-httpx -l urls.txt -tech-detect -title -status-code -web-server` (**Note: ProjectDiscovery build must use pd-httpx; `/usr/bin/httpx` is Python CLI**).
+4. Subnet fingerprinting: Use skill `gogo-intranet` (`gogo -i <cidr> -p top2 -v --af`; active fingerprinting requires `-v`).
+5. Version matching: Infer product and version from fingerprints to prepare for vulnerability assessment.
 
-## 落库要求
-写入 fingerprint 表：category（框架/中间件/CMS/组件）、vendor、product、version、evidence。
+## Database Logging Requirements
+Record into the fingerprint table: category (framework/middleware/CMS/component), vendor, product, version, evidence.

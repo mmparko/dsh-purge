@@ -1,56 +1,56 @@
 ---
 name: recon-pipeline
-description: ProjectDiscovery 信息收集流水线：subfinder→dnsx→naabu→httpx→katana 一键铺开域名资产面
-whenToUse: 信息收集阶段拿到域名/单位名后，系统化铺开子域→解析→端口→存活→页面与接口
+description: ProjectDiscovery reconnaissance pipeline: subfinder -> dnsx -> naabu -> httpx -> katana to systematically map out domain attack surfaces
+whenToUse: During reconnaissance after obtaining domain or organization names, to systematically map subdomains -> DNS resolution -> ports -> web liveness -> endpoints
 role: recon
 enabled: true
 ---
 
-# 外部信息收集流水线（ProjectDiscovery）
+# External Reconnaissance Pipeline (ProjectDiscovery)
 
-把"一个域名"变成"一份带标题、技术栈、端口的存活资产清单"，是信息收集阶段的标准动作。
-四个工具**有固定顺序**：先枚举子域 → 再解析 → 再探端口 → 再判存活 → 最后抓页面与接口。
+Converting a root domain into an actionable inventory of live hosts with titles, technology stacks, and open ports is the standard reconnaissance workflow.
+The tools follow a **strict sequence**: Enumerate subdomains -> Resolve DNS -> Scan ports -> Verify web liveness -> Crawl pages and API endpoints.
 
-## 本机工具
+## Local Toolkit Binaries
 
-| 工具 | 路径 | 版本 | 作用 |
+| Tool | Path | Version | Purpose |
 | --- | --- | --- | --- |
-| subfinder | `$DSH_HOME/redteam/toolkit/subfinder/subfinder` | v2.16.0 | 被动子域枚举（多源聚合） |
-| dnsx | `$DSH_HOME/redteam/toolkit/dnsx/dnsx` | v1.3.1 | 批量解析、DNS 爆破、泛解析过滤 |
-| naabu | `$DSH_HOME/redteam/toolkit/naabu/naabu` | v2.6.1 | 高速端口扫描（SYN 需 root，否则 `-scan-type c`） |
-| httpx | `$DSH_HOME/redteam/toolkit/httpx/httpx`（包装器 `~/.local/bin/pd-httpx`） | v1.12.0 | HTTP 存活/标题/技术栈/状态码 |
-| katana | ❌ 未安装（如需抓取用技能 `browser-automation`） | — | 爬虫抓页面与接口 |
-| ksubdomain | `$DSH_HOME/redteam/toolkit/ksubdomain/ksubdomain` | v0.7 | 无状态子域爆破（比 dnsx 爆破快） |
-| OneForAll | `$DSH_HOME/redteam/toolkit/oneforall/OneForAll-0.4.5/`（源码，需 `.venv`） | v0.4.5 | 子域收集全家桶（字典大，慢但全） |
+| subfinder | `$DSH_HOME/redteam/toolkit/subfinder/subfinder` | v2.16.0 | Passive subdomain enumeration (multi-source aggregation) |
+| dnsx | `$DSH_HOME/redteam/toolkit/dnsx/dnsx` | v1.3.1 | DNS resolution, bruteforce, wildcard filtering |
+| naabu | `$DSH_HOME/redteam/toolkit/naabu/naabu` | v2.6.1 | Fast port scanning (SYN requires root; otherwise `-scan-type c`) |
+| httpx | `$DSH_HOME/redteam/toolkit/httpx/httpx` (wrapper: `~/.local/bin/pd-httpx`) | v1.12.0 | HTTP liveness / titles / tech stack / status codes |
+| katana | (Use skill `browser-automation` if needed) | — | Crawler for pages and endpoints |
+| ksubdomain | `$DSH_HOME/redteam/toolkit/ksubdomain/ksubdomain` | v0.7 | Stateless subdomain bruteforce (faster than dnsx bruteforce) |
+| OneForAll | `$DSH_HOME/redteam/toolkit/oneforall/OneForAll-0.4.5/` (source with `.venv`) | v0.4.5 | Comprehensive subdomain collection suite |
 
-> ⚠️ **`/usr/bin/httpx` 是 Python httpx 库的 CLI，不是 ProjectDiscovery 的**——必须用 `pd-httpx` 或绝对路径。
+> ⚠️ **`/usr/bin/httpx` is the Python httpx library CLI, not ProjectDiscovery's** — always use `pd-httpx` or the absolute path.
 
-## 标准流水线
+## Standard Pipeline
 
 ```bash
 mkdir -p runs
 TK=$DSH_HOME/redteam/toolkit
 D=example.com
 
-# ① 子域枚举（被动，多源）
+# 1. Subdomain Enumeration (Passive, multi-source)
 $TK/subfinder/subfinder -d $D -all -silent -o runs/subfinder-$D.txt
-# 补充：无状态爆破（有字典时）
+# Optional: Stateless bruteforce (when wordlist is available)
 # $TK/ksubdomain/ksubdomain -d $D -f /usr/share/seclists/Discovery/DNS/subdomains-top1million-20000.txt
 
-# ② 泛解析过滤 + 解析存活（dnsx 会剔除泛解析噪声，这一步很关键）
+# 2. Wildcard DNS Filtering & Resolution (dnsx filters wildcard noise)
 cat runs/subfinder-$D.txt | $TK/dnsx/dnsx -silent -a -resp -o runs/dnsx-$D.txt
 awk '{print $1}' runs/dnsx-$D.txt | sort -u > runs/alive-domains-$D.txt
 
-# ③ 端口扫描（先 top100 快速过一遍，再对存活主机扫全端口）
+# 3. Port Scanning (Fast top-100 scan first, followed by full ports on live hosts)
 $TK/naabu/naabu -l runs/alive-domains-$D.txt -top-ports 100 -silent -o runs/naabu-$D.txt
-# 全端口（慢，确认在范围内再做）：-p - -rate 1000
+# Full ports (slower; confirm authorization first): -p - -rate 1000
 
-# ④ HTTP 存活与指纹（标题/状态码/技术栈/服务器）
+# 4. HTTP Liveness & Tech Fingerprinting (Titles / Status / Tech Stack / Server)
 $TK/httpx/httpx -l runs/alive-domains-$D.txt -ports 80,443,8080,8443,8000,8888,9000 \
   -title -status-code -tech-detect -web-server -follow-redirects -silent \
   -json -o runs/httpx-$D.jsonl
 
-# ⑤ 整理成资产清单（URL 清单给目录爆破/漏洞扫描用）
+# 5. Compile into Asset Inventory (Live URLs for dir bruteforce & vuln scanning)
 python3 - <<'PY'
 import json
 out=set()
@@ -59,53 +59,48 @@ for line in open('runs/httpx-'+'$D'+'.jsonl'):
     except: continue
     if j.get('url'): out.add(j['url'])
 open('runs/alive-urls.txt','w').write('\n'.join(sorted(out)))
-print('存活 URL:', len(out))
+print('Live URLs:', len(out))
 PY
 ```
 
-## 单条命令速查（不想跑全流程时）
+## Quick Commands (Stand-alone Tasks)
 
 ```bash
-# 只要子域
+# Subdomains only
 $TK/subfinder/subfinder -d example.com -all -silent
 
-# 只要存活 URL（已有域名清单）
+# Live URLs only (from existing domains list)
 pd-httpx -l domains.txt -silent -o alive.txt
 
-# 只要端口（单 IP，全端口）
-nmap -sS -p- --min-rate 1000 -T4 1.2.3.4 -oX runs/nmap-1.2.3.4.xml   # 技能 active-scan
+# Port scan single host (all ports)
+nmap -sS -p- --min-rate 1000 -T4 1.2.3.4 -oX runs/nmap-1.2.3.4.xml   # skill: active-scan
 $TK/naabu/naabu -host 1.2.3.4 -p - -rate 1000 -silent
 ```
 
-## 与其它技能的分工
+## Role & Skill Division
 
-| 场景 | 用哪个 |
+| Scenario | Recommended Skill |
 | --- | --- |
-| 单位名/域名 → 互联网资产面（含未备案、同主体） | **`fofa-recon`**（测绘，找得最全） |
-| 域名 → 子域 → 存活 → 指纹 | **本技能**（流水线，标准化） |
-| 不接触目标（纯被动） | `passive-recon`（crt.sh/dig/whois） |
-| 内网大网段测绘 | `gogo-intranet`（**不要用本技能打内网**） |
-| SP​A/JS 渲染页面、接口清单 | `browser-automation` / `kimi-webbridge` |
-| 存活主机端口/服务版本 | `active-scan`（nmap/masscan） |
+| Org name / root domain -> Full attack surface (unindexed, subsidiaries) | **`fofa-recon`** (Broadest asset coverage) |
+| Domain -> Subdomains -> Liveness -> Fingerprints | **`recon-pipeline`** (Standardized pipeline) |
+| Passive recon without touching target | `passive-recon` (crt.sh / dig / whois) |
+| Intranet subnet surveying | `gogo-intranet` (**Do not use this skill for intranet**) |
+| SPA / JavaScript-heavy rendering, endpoint discovery | `browser-automation` / `kimi-webbridge` |
+| Live host ports & service versions | `active-scan` (nmap / masscan) |
 
-**推荐顺序**：`fofa-recon` 铺面（拿单位资产全景）→ 本技能对每个域名做流水线（拿存活与指纹）→ `active-scan` 对重点 IP 定版本。
+**Recommended Flow**: `fofa-recon` for overall perimeter map -> `recon-pipeline` on discovered domains for live hosts -> `active-scan` on priority targets for exact versions.
 
-## 纪律
+## Operational Rules
 
-1. **只测授权范围内目标**：naabu 全端口、ksubdomain 爆破都属于**主动**行为，确认在范围内再做。
-2. **限速**：`naabu -rate 1000` 起步；`subfinder` 用被动源不加 `-all` 时更安静（配额消耗也少）。
-3. **泛解析**：`dnsx` 会过滤；如果结果里出现大量同 IP 的随机子域，说明目标有泛解析，改用 `-wd` 或换爆破字典。
-4. **API key（可选增强）**：`subfinder` 配置 `~/.config/subfinder/provider-config.yaml` 可接
-   Shodan/Censys/VirusTotal 等源（**需要用户提供 key**，见技能 `redteam-setup`）；没 key 也能用免费源。
+1. **Strictly within scope**: Naabu full-port scans and ksubdomain bruteforce are **active** operations; verify authorization.
+2. **Rate limiting**: Start with `naabu -rate 1000`; `subfinder` is quieter when used with passive sources without `-all`.
+3. **Wildcard DNS**: `dnsx` filters wildcard entries automatically; if results show random subdomains on identical IPs, use `-wd` or update dictionary.
+4. **API keys (optional)**: Configure `~/.config/subfinder/provider-config.yaml` to integrate Shodan / Censys / VirusTotal (see skill `redteam-setup`).
 
-## 输出与落库（强制）
+## Database Logging Requirements (Mandatory)
 
-1. **逐条 `redteam_asset_add`**：`target`（域名/IP）、`names`（域名）、`ports`（带 `url=host`、`title`、`product=server`）、
-   `provenance=passive`（subfinder/dnsx 阶段）或 `active`（naabu/httpx 主动探测）、`tool`（具体工具名）。
-2. **按 /24 自动建 C 段**（`redteam_asset_add` 已自动处理）→ 用 `redteam_asset_link` 建立
-   `resolves`（域名→IP）、`contains`（C 段→IP）关系，形成图谱（技能 `asset-correlation`）。
-3. 每个阶段 `redteam_chain_add`：`stage_code=recon`，`tool` 写实际命令原文，`result` 写数量摘要
-   （如 `subfinder 命中 42 个子域 → dnsx 存活 31 → naabu 开放 87 端口 → httpx 存活 19 个站点`）。
-4. **重点标注边缘资产**：测试/预发环境（test/dev/uat/pre/staging）、老旧系统、非标准端口、
-   非备案主体但同 C 段/IP 的站点——写进 `note`，这些是资产梳理阶段的高优先级目标。
-5. 结论给指挥者时**给数字**：子域数 / 存活 IP 数 / 开放端口数 / 存活站点数 / 其中高优先级几条。
+1. **Record each finding via `redteam_asset_add`**: `target` (domain/IP), `names` (domains), `ports` (with `url=host`, `title`, `product=server`), `provenance=passive` (for subfinder/dnsx) or `active` (for naabu/httpx), and `tool`.
+2. **Auto-generate /24 CIDRs** (handled automatically by `redteam_asset_add`) -> link relationships via `redteam_asset_link`: `resolves` (domain -> IP), `contains` (CIDR -> IP) (see skill `asset-correlation`).
+3. **Log pipeline milestones via `redteam_chain_add`**: `stage_code=recon`, `tool` with exact command executed, and `result` summarizing counts (e.g. `subfinder found 42 subdomains -> dnsx resolved 31 live -> naabu found 87 open ports -> httpx identified 19 live web services`).
+4. **Highlight perimeter assets**: Test/staging environments (test/dev/uat/pre/staging), legacy software, non-standard ports, and unindexed hosts on shared CIDRs — record these in `note` as high-priority targets for assessment.
+5. **Report clear numbers to Commander**: Subdomains count / Live IPs / Open ports / Live web applications / High-priority candidate targets.

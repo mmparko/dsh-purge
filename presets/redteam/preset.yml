@@ -1,3 +1,3 @@
-name: 红队模式
-description: 攻防演练模式：发送一个靶标单位名称即可拉起红队智能体。内置主会话 + 信息收集/资产梳理/漏洞发现/漏洞利用/内网渗透五个执行角色（并发最多 3 个），资产测绘落入 SQLite 资产库，技能库可自行配置。
+name: Red Team Mode
+description: Penetration Testing & Red Team Operations: Send a target organization name to launch the red team commander. Built-in planner + 5 specialist execution roles (recon, asset inventory, vulnerability scanning, exploitation, intranet pivoting; concurrency up to 3), SQLite target asset store, and customizable red team skill set.
 order: 10
