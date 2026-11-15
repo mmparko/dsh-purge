@@ -1,3 +1,95 @@
+# 1.1.73
+
+## 中文
+
+- 版本 **1.1.73**。**修复致命启动故障**：`unknown prompt variable "{{cwd}}"`。
+- 现象：升级到 DSH 0.2.2-rc.3 后，任何一轮对话直接失败，提示
+  `本轮运行失败unknown prompt variable "{{cwd}}" in section "deployment:persona-suffix"; registered variables: provider, model`。
+- 根因：0.2.2 的 `dsh-system-prompt` 收紧了插值变量表，**只注册 `provider` / `model`，不再有 `cwd`**。
+  而 `identity.js` 的 `overlayOfficialIdentity()` 在后缀段为空时**无条件**写回 `CWD_ONLY_SUFFIX`
+  （`Your working directory is {{cwd}}.`），于是宿主渲染前直接抛错，请求发不出去。
+  1.1.72 在 0.2.2-rc.3 上**开箱即挂**，属回归。
+- 修复：新增 `cwdSuffixFor(variables)`，**运行时探测宿主是否注册了 `cwd` 且值非 `undefined`**，有才注入：
+  - `overlayOfficialIdentity(sections, variables)` 增加 `variables` 形参；
+  - 两处硬编码 `CWD_ONLY_SUFFIX` 改为动态 `cwdSuffix`；
+  - 没有 `cwd` 时**不再补建空的 `deployment:persona-suffix` 段**；
+  - 调用点透传 `assembled.variables`。
+- `variables.cwd !== undefined` 这个额外判断不能省：宿主对「已注册但值为 undefined」同样抛错。
+- 验证：用宿主自己的 `renderPrompt`（非模拟）跑 8 个场景全过 —— 本机无 cwd、后缀为空、有 cwd、
+  cwd 为 undefined、bundle 写死 `{{cwd}}`、用户自定义后缀、无 suffix 段不补建空段、`cwdSuffixFor` 三态。
+- 兼容：宿主有 `cwd` 时行为与之前完全一致，老版本 DSH 不受影响。
+
+## English
+
+- **1.1.73**. **Fixes a fatal startup regression**: `unknown prompt variable "{{cwd}}"`.
+- Symptom: on DSH 0.2.2-rc.3 every turn fails immediately with
+  `本轮运行失败unknown prompt variable "{{cwd}}" in section "deployment:persona-suffix"; registered variables: provider, model`.
+- Root cause: 0.2.2's `dsh-system-prompt` tightened the interpolation table to **`provider` / `model` only — `cwd` is gone**.
+  `overlayOfficialIdentity()` in `identity.js` still wrote `CWD_ONLY_SUFFIX` (`Your working directory is {{cwd}}.`)
+  back **unconditionally** whenever the suffix section was empty, so the host threw before rendering and the request never left.
+  1.1.72 was therefore broken out of the box on 0.2.2-rc.3.
+- Fix: new `cwdSuffixFor(variables)` probes at runtime whether the host registered `cwd` with a non-`undefined` value:
+  - `overlayOfficialIdentity(sections, variables)` takes the variable table;
+  - both hardcoded `CWD_ONLY_SUFFIX` writes become the dynamic `cwdSuffix`;
+  - no empty `deployment:persona-suffix` section is synthesised when `cwd` is absent;
+  - the call site forwards `assembled.variables`.
+- The extra `variables.cwd !== undefined` check is required: the host also throws for a registered-but-undefined variable.
+- Verified against the host's own `renderPrompt` (not a mock) across 8 scenarios: no cwd, empty suffix, cwd present,
+  cwd undefined, hardcoded `{{cwd}}` in a bundle, user-authored suffix, no suffix section, and the three `cwdSuffixFor` states.
+- Compatible: identical behaviour when the host does provide `cwd`, so older DSH versions are unaffected.
+
+# 1.1.72
+
+## 中文
+
+- 版本 **1.1.72**。适配官方 **dsh 0.2.2-rc.3**（原适配 0.2.0-rc.2）。
+- **补丁生效数 58 → 72 / 82**，`skipped` 由 18 降到 4。
+- `targetFiles()` 新增 5 个 0.2.2 的包搬迁映射，每个键同时登记**老路径 + 新路径**，一个插件兼容两个大版本：
+  - `deliverables-prompt` → 追加 `dsh-deliverable-file-references`
+  - `dsh-tools-ptc` → 追加 `dsh-tool-executor-ptc`（run_code 已拆成独立包）
+  - `dsh-tools-pipeline` → 新增 `dsh-tools/lib/pipeline.js`（审批逻辑从 index.js 拆出）
+  - `harness-dev-context` → 新增 `dsh-harness-dev-context`（Web 身份句搬到此处）
+- 14 条补丁追加 0.2.2 的新 pattern，旧 pattern **全部保留**：
+  - #13/#14/#35：`throw new Error` → `SandboxEscalationError(msg, CODE)`，cancelled 分支多一行
+  - #17：`editIntent`/`deleteIntent` 合并成 `requirePresent(target, actor, verb)`
+  - #18：`downstream.kind === "block"` 分支被官方删除
+  - #32/#53：Web 身份句搬到 `WEB_SURFACE_PROMPT`，措辞改为 "whose URL the runtime context names"
+  - #40：`completeSection` 分支重写，新增 `requiredContexts` 过滤
+  - #54：常量改名 `FILE_REFERENCE_PROMPT`
+  - #60：整个包换到 `dsh-tool-executor-ptc`
+  - #62：`deny` 包成 `approvalDenial(reason, CODE)`，新增 `exec.agent === void 0` 分支
+  - #67：外层多包一层 `try {}`，缩进 4 tab → 5 tab
+  - #74：claim 与 assemble 之间插入了 model selection
+  - #82：import 后跟随的 region 从 `home-paths` 变成 `mime`
+- 官方 0.2.2 已删除 rewind 功能，**#56 / #77 改为跳过**（former：前端 conversation 包内已无 rewind 代码）。
+- 包内所有新加注释带 `0.2.2-rc.3` 前缀，便于与上游后续版本合并。
+- 10 个被改写的宿主文件全部通过 `node --check`。
+
+## English
+
+- **1.1.72**. Adapts to official **dsh 0.2.2-rc.3** (was 0.2.0-rc.2).
+- **Patch coverage 58 → 72 / 82**; `skipped` drops from 18 to 4.
+- `targetFiles()` registers five 0.2.2 package moves. Every key lists **both the old and the new path**, so one plugin build serves both major versions:
+  - `deliverables-prompt` → adds `dsh-deliverable-file-references`
+  - `dsh-tools-ptc` → adds `dsh-tool-executor-ptc` (run_code split into its own package)
+  - `dsh-tools-pipeline` → new `dsh-tools/lib/pipeline.js` (approval logic moved out of index.js)
+  - `harness-dev-context` → new `dsh-harness-dev-context` (Web identity sentence moved here)
+- 14 patches gain a 0.2.2 pattern; every legacy pattern is **kept**:
+  - #13/#14/#35: `throw new Error` → `SandboxEscalationError(msg, CODE)`; cancelled gains a `throwIfAborted` line
+  - #17: `editIntent`/`deleteIntent` folded into `requirePresent(target, actor, verb)`
+  - #18: official dropped the `downstream.kind === "block"` branch
+  - #32/#53: Web identity sentence moved into `WEB_SURFACE_PROMPT`, reworded to "whose URL the runtime context names"
+  - #40: `completeSection` branch rewritten, new `requiredContexts` filter
+  - #54: constant renamed to `FILE_REFERENCE_PROMPT`
+  - #60: whole target moved to `dsh-tool-executor-ptc`
+  - #62: `deny` wrapped in `approvalDenial(reason, CODE)`, new `exec.agent === void 0` branch
+  - #67: extra `try {}` nesting, indent 4 tabs → 5 tabs
+  - #74: model selection now sits between claim and assemble
+  - #82: region following the import changed from `home-paths` to `mime`
+- Official 0.2.2 removed rewind entirely, so **#56 / #77 now skip** (no rewind code remains in the client conversation bundle).
+- Every new comment carries a `0.2.2-rc.3` prefix for easier merging with upstream.
+- All ten rewritten host files pass `node --check`.
+
 # 1.1.71
 
 ## 中文

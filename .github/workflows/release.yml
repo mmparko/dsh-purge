@@ -26,7 +26,13 @@ jobs:
           node --check lib/index.js
           node --check lib/core.js
           node --check lib/reapply.js
+          node --check lib/identity.js
           node --input-type=module -e "import './lib/index.js'"
+
+      # 只在本地装了 DSH 时有意义；CI 上没有宿主会自己跳过并返回 0。
+      # 目的：拦住「语法对、renderPrompt 炸」这类回归（见 docs/FIX-cwd-variable.md）。
+      - name: Verify prompt rendering
+        run: node scripts/verify-prompt.mjs
 
       - name: Publish GitHub Release
         env:
