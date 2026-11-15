@@ -1,3 +1,55 @@
+# 1.1.72
+
+## 中文
+
+- 版本 **1.1.72**。适配官方 **dsh 0.2.2-rc.3**（原适配 0.2.0-rc.2）。
+- **补丁生效数 58 → 72 / 82**，`skipped` 由 18 降到 4。
+- `targetFiles()` 新增 5 个 0.2.2 的包搬迁映射，每个键同时登记**老路径 + 新路径**，一个插件兼容两个大版本：
+  - `deliverables-prompt` → 追加 `dsh-deliverable-file-references`
+  - `dsh-tools-ptc` → 追加 `dsh-tool-executor-ptc`（run_code 已拆成独立包）
+  - `dsh-tools-pipeline` → 新增 `dsh-tools/lib/pipeline.js`（审批逻辑从 index.js 拆出）
+  - `harness-dev-context` → 新增 `dsh-harness-dev-context`（Web 身份句搬到此处）
+- 14 条补丁追加 0.2.2 的新 pattern，旧 pattern **全部保留**：
+  - #13/#14/#35：`throw new Error` → `SandboxEscalationError(msg, CODE)`，cancelled 分支多一行
+  - #17：`editIntent`/`deleteIntent` 合并成 `requirePresent(target, actor, verb)`
+  - #18：`downstream.kind === "block"` 分支被官方删除
+  - #32/#53：Web 身份句搬到 `WEB_SURFACE_PROMPT`，措辞改为 "whose URL the runtime context names"
+  - #40：`completeSection` 分支重写，新增 `requiredContexts` 过滤
+  - #54：常量改名 `FILE_REFERENCE_PROMPT`
+  - #60：整个包换到 `dsh-tool-executor-ptc`
+  - #62：`deny` 包成 `approvalDenial(reason, CODE)`，新增 `exec.agent === void 0` 分支
+  - #67：外层多包一层 `try {}`，缩进 4 tab → 5 tab
+  - #74：claim 与 assemble 之间插入了 model selection
+  - #82：import 后跟随的 region 从 `home-paths` 变成 `mime`
+- 官方 0.2.2 已删除 rewind 功能，**#56 / #77 改为跳过**（former：前端 conversation 包内已无 rewind 代码）。
+- 包内所有新加注释带 `0.2.2-rc.3` 前缀，便于与上游后续版本合并。
+- 10 个被改写的宿主文件全部通过 `node --check`。
+
+## English
+
+- **1.1.72**. Adapts to official **dsh 0.2.2-rc.3** (was 0.2.0-rc.2).
+- **Patch coverage 58 → 72 / 82**; `skipped` drops from 18 to 4.
+- `targetFiles()` registers five 0.2.2 package moves. Every key lists **both the old and the new path**, so one plugin build serves both major versions:
+  - `deliverables-prompt` → adds `dsh-deliverable-file-references`
+  - `dsh-tools-ptc` → adds `dsh-tool-executor-ptc` (run_code split into its own package)
+  - `dsh-tools-pipeline` → new `dsh-tools/lib/pipeline.js` (approval logic moved out of index.js)
+  - `harness-dev-context` → new `dsh-harness-dev-context` (Web identity sentence moved here)
+- 14 patches gain a 0.2.2 pattern; every legacy pattern is **kept**:
+  - #13/#14/#35: `throw new Error` → `SandboxEscalationError(msg, CODE)`; cancelled gains a `throwIfAborted` line
+  - #17: `editIntent`/`deleteIntent` folded into `requirePresent(target, actor, verb)`
+  - #18: official dropped the `downstream.kind === "block"` branch
+  - #32/#53: Web identity sentence moved into `WEB_SURFACE_PROMPT`, reworded to "whose URL the runtime context names"
+  - #40: `completeSection` branch rewritten, new `requiredContexts` filter
+  - #54: constant renamed to `FILE_REFERENCE_PROMPT`
+  - #60: whole target moved to `dsh-tool-executor-ptc`
+  - #62: `deny` wrapped in `approvalDenial(reason, CODE)`, new `exec.agent === void 0` branch
+  - #67: extra `try {}` nesting, indent 4 tabs → 5 tabs
+  - #74: model selection now sits between claim and assemble
+  - #82: region following the import changed from `home-paths` to `mime`
+- Official 0.2.2 removed rewind entirely, so **#56 / #77 now skip** (no rewind code remains in the client conversation bundle).
+- Every new comment carries a `0.2.2-rc.3` prefix for easier merging with upstream.
+- All ten rewritten host files pass `node --check`.
+
 # 1.1.71
 
 ## 中文
