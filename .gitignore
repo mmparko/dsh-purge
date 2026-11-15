@@ -32,3 +32,6 @@ default-prompt-inject.md
 /official-harness-payload.7z
 *.asar
 *.asar.bak
+
+# 临时提交信息文件
+_msg*.txt
