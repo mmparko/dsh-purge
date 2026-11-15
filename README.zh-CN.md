@@ -53,6 +53,7 @@
 - [更新](#更新)
 - [源码讲解](docs/SOURCE-GUIDE.zh-CN.md)
 - [0.2.2 升级报告](docs/UPGRADE-0.2.2.md)
+- [1.1.73 修复：unknown prompt variable](docs/FIX-cwd-variable.md)
 
 ---
 

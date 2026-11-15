@@ -1,3 +1,43 @@
+# 1.1.73
+
+## 中文
+
+- 版本 **1.1.73**。**修复致命启动故障**：`unknown prompt variable "{{cwd}}"`。
+- 现象：升级到 DSH 0.2.2-rc.3 后，任何一轮对话直接失败，提示
+  `本轮运行失败unknown prompt variable "{{cwd}}" in section "deployment:persona-suffix"; registered variables: provider, model`。
+- 根因：0.2.2 的 `dsh-system-prompt` 收紧了插值变量表，**只注册 `provider` / `model`，不再有 `cwd`**。
+  而 `identity.js` 的 `overlayOfficialIdentity()` 在后缀段为空时**无条件**写回 `CWD_ONLY_SUFFIX`
+  （`Your working directory is {{cwd}}.`），于是宿主渲染前直接抛错，请求发不出去。
+  1.1.72 在 0.2.2-rc.3 上**开箱即挂**，属回归。
+- 修复：新增 `cwdSuffixFor(variables)`，**运行时探测宿主是否注册了 `cwd` 且值非 `undefined`**，有才注入：
+  - `overlayOfficialIdentity(sections, variables)` 增加 `variables` 形参；
+  - 两处硬编码 `CWD_ONLY_SUFFIX` 改为动态 `cwdSuffix`；
+  - 没有 `cwd` 时**不再补建空的 `deployment:persona-suffix` 段**；
+  - 调用点透传 `assembled.variables`。
+- `variables.cwd !== undefined` 这个额外判断不能省：宿主对「已注册但值为 undefined」同样抛错。
+- 验证：用宿主自己的 `renderPrompt`（非模拟）跑 8 个场景全过 —— 本机无 cwd、后缀为空、有 cwd、
+  cwd 为 undefined、bundle 写死 `{{cwd}}`、用户自定义后缀、无 suffix 段不补建空段、`cwdSuffixFor` 三态。
+- 兼容：宿主有 `cwd` 时行为与之前完全一致，老版本 DSH 不受影响。
+
+## English
+
+- **1.1.73**. **Fixes a fatal startup regression**: `unknown prompt variable "{{cwd}}"`.
+- Symptom: on DSH 0.2.2-rc.3 every turn fails immediately with
+  `本轮运行失败unknown prompt variable "{{cwd}}" in section "deployment:persona-suffix"; registered variables: provider, model`.
+- Root cause: 0.2.2's `dsh-system-prompt` tightened the interpolation table to **`provider` / `model` only — `cwd` is gone**.
+  `overlayOfficialIdentity()` in `identity.js` still wrote `CWD_ONLY_SUFFIX` (`Your working directory is {{cwd}}.`)
+  back **unconditionally** whenever the suffix section was empty, so the host threw before rendering and the request never left.
+  1.1.72 was therefore broken out of the box on 0.2.2-rc.3.
+- Fix: new `cwdSuffixFor(variables)` probes at runtime whether the host registered `cwd` with a non-`undefined` value:
+  - `overlayOfficialIdentity(sections, variables)` takes the variable table;
+  - both hardcoded `CWD_ONLY_SUFFIX` writes become the dynamic `cwdSuffix`;
+  - no empty `deployment:persona-suffix` section is synthesised when `cwd` is absent;
+  - the call site forwards `assembled.variables`.
+- The extra `variables.cwd !== undefined` check is required: the host also throws for a registered-but-undefined variable.
+- Verified against the host's own `renderPrompt` (not a mock) across 8 scenarios: no cwd, empty suffix, cwd present,
+  cwd undefined, hardcoded `{{cwd}}` in a bundle, user-authored suffix, no suffix section, and the three `cwdSuffixFor` states.
+- Compatible: identical behaviour when the host does provide `cwd`, so older DSH versions are unaffected.
+
 # 1.1.72
 
 ## 中文
