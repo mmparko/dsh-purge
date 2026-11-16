@@ -28,7 +28,7 @@
   config:
     includeHarnessIdentity: false
     personaPrefix: ""
-    personaSuffix: Your working directory is {{cwd}}.
+    personaSuffix: ""
 
 - id: dsh-purge
   inject: [systemPrompt, tools]
