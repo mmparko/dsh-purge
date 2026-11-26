@@ -28,7 +28,10 @@
   config:
     includeHarnessIdentity: false
     personaPrefix: ""
-    personaSuffix: Your working directory is {{cwd}}.
+    # #4: 不要写 `{{cwd}}`。新版 agent-loop 只注册 provider/model，工作目录由
+    # working-directory 服务作为 runtime context 提供；这里留模板会让整轮装配抛
+    # unknown prompt variable。要自定义结尾句就写纯静态文本（可用英文，不含 {{ }}）。
+    personaSuffix: ""
 
 - id: dsh-purge
   inject: [systemPrompt, tools]
