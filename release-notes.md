@@ -1,3 +1,27 @@
+# 1.1.72
+
+## 中文
+
+- 版本 **1.1.72**。
+- #4 修死锁级回归：新版 DSH（`agent-loop` 只注册 `provider` / `model`）下，插件运行时仍把 `{{cwd}}` 写回 `deployment:persona-suffix`，装配必抛 `unknown prompt variable "{{cwd}}"`，每轮会话在模型请求前就失败。
+  - `CWD_ONLY_SUFFIX` 改成静态句（`Your working directory is the current workspace.`），不再含任何提示词变量。
+  - `stripHarnessPersona()` 遇到旧官方身份句里的 cwd 片段直接整句删除，不再改写成 `Working directory: {{cwd}}.`（那只是把未注册变量挪个位置）。
+  - 新增装配尾部兜底 `sanitizeCwdTokens()`：宿主这轮没注册 `cwd` 时，把残留的 `{{cwd}}` / `[cwd]` 统一落成静态句；`DSH_PURGE_CWD=variable|static` 可强制覆盖。
+- 移除 bundle patch 里的 `personaSuffix` 模板（改回空串，工作目录已由 working-directory 服务提供）。
+- 删掉 `lib/core.js` 里两枚无人引用、却带 `{{cwd}}` 的 persona 常量，避免以后被钉回 persona。
+- 新增回归测试 `test/cwd-variable.test.mjs`（`npm test`）：空 suffix / 旧 cwd 句 / 缺 suffix 段 / 用户 inject 带 `{{cwd}}` / 第三方段带 `[cwd]` 五种入口都不再向宿主交出未注册变量，自定义 suffix 原样保留。
+
+## English
+
+- **1.1.72**.
+- #4 fixes a startup-blocking regression on new DSH builds (`agent-loop` registers only `provider` / `model`): the plugin still wrote `{{cwd}}` back into `deployment:persona-suffix`, so assembly threw `unknown prompt variable "{{cwd}}"` before any model request.
+  - `CWD_ONLY_SUFFIX` is now a static sentence with no prompt variable.
+  - `stripHarnessPersona()` deletes the cwd sentence instead of rewriting it to `Working directory: {{cwd}}.`.
+  - New `sanitizeCwdTokens()` tail guard rewrites any leftover `{{cwd}}` / `[cwd]` to static text when the host does not register `cwd`; `DSH_PURGE_CWD=variable|static` overrides.
+- Bundle patch no longer sets a `personaSuffix` containing `{{cwd}}`.
+- Dropped two unreferenced `{{cwd}}` persona constants from `lib/core.js`.
+- New regression test `test/cwd-variable.test.mjs` (`npm test`).
+
 # 1.1.71
 
 ## 中文
